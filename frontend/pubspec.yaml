@@ -1,0 +1,94 @@
+name: brew_haiku
+description: A mindful brewing timer app with haiku poetry, powered by Bluesky.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.4.0
+  riverpod_annotation: ^2.3.0
+
+  # Secure Storage
+  flutter_secure_storage: ^9.0.0
+
+  # ATProto / Bluesky
+  bluesky: ^0.15.8
+  atproto: ^0.11.0
+
+  # UI
+  google_fonts: ^6.1.0
+  cupertino_icons: ^1.0.6
+
+  # Utilities
+  intl: ^0.18.0
+  collection: ^1.18.0
+  http: ^1.1.0
+  url_launcher: ^6.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  riverpod_generator: ^2.3.0
+  build_runner: ^2.4.0
+  flutter_native_splash: ^2.3.0
+
+flutter:
+  uses-material-design: true
+
+  fonts:
+    - family: PlayfairDisplay
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay-Regular.ttf
+        - asset: assets/fonts/PlayfairDisplay-Italic.ttf
+          style: italic
+        - asset: assets/fonts/PlayfairDisplay-Bold.ttf
+          weight: 700
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+
+  assets:
+    - assets/images/
+    - assets/audio/
+
+# Native splash screen configuration
+flutter_native_splash:
+  # Light mode colors (Morning Fog Light)
+  color: "#FAF8F5"
+
+  # Dark mode colors (Morning Fog Dark)
+  color_dark: "#1A1612"
+
+  # Branding image (optional - uses text-based branding)
+  # image: assets/images/splash_logo.png
+  # image_dark: assets/images/splash_logo_dark.png
+
+  # Android 12+ specific settings
+  android_12:
+    color: "#FAF8F5"
+    color_dark: "#1A1612"
+
+  # iOS settings
+  ios: true
+
+  # Android settings
+  android: true
+
+  # Web settings (disabled for mobile-only app)
+  web: false
+
+  # Full screen mode
+  fullscreen: true

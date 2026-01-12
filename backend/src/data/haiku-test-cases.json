@@ -1,0 +1,70 @@
+{
+  "valid": [
+    {
+      "text": "An old silent pond\nA frog jumps into the pond\nSplash silence again",
+      "note": "classic haiku"
+    },
+    {
+      "text": "Steam rises slowly\nPatience rewards the waiting\nFirst sip of pure bliss",
+      "note": "brew haiku"
+    },
+    {
+      "text": "Morning light breaks through\nCoffee brewing fills the room\nA new day begins",
+      "note": "coffee haiku"
+    },
+    {
+      "text": "Leaves fall from the tree\nAutumn wind whispers softly\nNature rests in peace",
+      "note": "nature haiku"
+    },
+    {
+      "text": "Steam rises slowly\nPatience rewards the waiting\nFirst sip of pure bliss\n\nvia @brew-haiku.app",
+      "note": "brew haiku with signature"
+    },
+    {
+      "text": "The kettle sings out\nWater poured over green leaves\nCalm in every sip",
+      "note": "tea ceremony haiku"
+    },
+    {
+      "text": "Rain on the window\nA cup of tea in my hands\nThe world feels complete",
+      "note": "rainy day haiku"
+    },
+    {
+      "text": "Moon above the lake\nStars reflected in still water\nSilence fills the night",
+      "note": "moonlit haiku with grace"
+    }
+  ],
+  "invalid": [
+    {
+      "text": "This is just a regular sentence",
+      "reason": "not 5-7-5"
+    },
+    {
+      "text": "Hello world",
+      "reason": "too few words"
+    },
+    {
+      "text": "El sol brilla sobre el mar tranquilo y azul profundo y sereno hoy",
+      "reason": "not english"
+    },
+    {
+      "text": "古池や蛙飛び込む水の音",
+      "reason": "non-latin script"
+    },
+    {
+      "text": "Это хайку на русском языке тихий вечер",
+      "reason": "non-latin script cyrillic"
+    },
+    {
+      "text": "One two three four five six seven eight nine ten eleven twelve thirteen",
+      "reason": "wrong syllable structure"
+    },
+    {
+      "text": "",
+      "reason": "empty text"
+    },
+    {
+      "text": "A a a a a a a a a a a a a a a a a a a a a",
+      "reason": "too many syllables for any valid partition"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "lexicon": 1,
+  "id": "app.brew-haiku.savedTimer",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A reference to a timer recipe that the user has saved to their collection. The rkey should be derived from the timer's rkey to enforce one save per timer per user.",
+      "key": "any",
+      "record": {
+        "type": "object",
+        "required": ["timerUri", "savedAt"],
+        "properties": {
+          "timerUri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI reference to the app.brew-haiku.timer record (e.g., 'at://did:plc:xxx/app.brew-haiku.timer/yyy')"
+          },
+          "savedAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the timer was saved"
+          }
+        }
+      }
+    }
+  }
+}

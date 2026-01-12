@@ -1,0 +1,80 @@
+{
+  "lexicon": 1,
+  "id": "app.brew-haiku.timer",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A brewing timer recipe with steps and configuration",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["name", "vessel", "brewType", "steps", "createdAt"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Recipe name (e.g., 'My V60 Recipe')"
+          },
+          "vessel": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "Brewing vessel (e.g., 'Hario V60', 'Gaiwan', 'French Press')"
+          },
+          "brewType": {
+            "type": "string",
+            "knownValues": ["coffee", "tea"],
+            "description": "Primary beverage category"
+          },
+          "ratio": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Water to dry ingredient ratio (optional for non-ratio brews like grandpa style)"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "ref",
+              "ref": "#step"
+            },
+            "maxLength": 20,
+            "description": "Ordered brewing steps"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Optional brewing notes or tips"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the timer was created"
+          }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "description": "A single step in a brewing recipe",
+      "required": ["action", "stepType"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Step instruction (e.g., 'Pour water in circles', 'Steep tea', 'Heat water to 165°C')"
+        },
+        "stepType": {
+          "type": "string",
+          "knownValues": ["timed", "indeterminate"],
+          "description": "Whether step has a fixed duration (timed) or user-controlled completion (indeterminate)"
+        },
+        "durationSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600,
+          "description": "Step duration in seconds (required if stepType is 'timed', ignored for 'indeterminate')"
+        }
+      }
+    }
+  }
+}

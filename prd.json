@@ -1,0 +1,278 @@
+{
+  "project": "Brew Haiku",
+  "version": "1.0.0",
+  "features": [
+    {
+      "id": "backend-setup",
+      "name": "Backend Project Setup",
+      "description": "Initialize Bun project with Effect framework, TypeScript configuration, and basic project structure. Set up package.json with dependencies (@effect/platform, @effect/schema, better-sqlite3) and configure bun test.",
+      "layer": "backend",
+      "dependencies": [],
+      "done": true
+    },
+    {
+      "id": "backend-database",
+      "name": "SQLite Database Schema",
+      "description": "Create SQLite database with tables: timer_index, timer_search (FTS5), did_cache, haiku_posts. Include migrations system and CacheService Effect layer.",
+      "layer": "backend",
+      "dependencies": ["backend-setup"],
+      "done": true
+    },
+    {
+      "id": "backend-health",
+      "name": "Health Check Endpoint",
+      "description": "Implement GET /health endpoint that returns server status and basic diagnostics. Set up HTTP server using Effect's HttpServer.",
+      "layer": "backend",
+      "dependencies": ["backend-setup"],
+      "done": true
+    },
+    {
+      "id": "backend-did-resolution",
+      "name": "DID Resolution Service",
+      "description": "Implement ATProtoService for resolving Bluesky handles to DIDs, fetching PDS URLs, and caching results in did_cache table. Include GET /resolve/:handle endpoint.",
+      "layer": "backend",
+      "dependencies": ["backend-database"],
+      "done": true
+    },
+    {
+      "id": "backend-timer-crud",
+      "name": "Timer API Endpoints",
+      "description": "Implement TimerService with CRUD operations: GET /timers (list), GET /timers/:id (single), POST /timers (create, requires auth). Timer data fetched from ATProto and cached locally.",
+      "layer": "backend",
+      "dependencies": ["backend-database", "backend-did-resolution"],
+      "done": true
+    },
+    {
+      "id": "backend-timer-search",
+      "name": "Timer Search with FTS5",
+      "description": "Implement GET /timers/search endpoint using SQLite FTS5 full-text search. Support filtering by brew_type, vessel. Ranking combines text relevance with save_count popularity.",
+      "layer": "backend",
+      "dependencies": ["backend-timer-crud"],
+      "done": true
+    },
+    {
+      "id": "backend-oauth",
+      "name": "Bluesky OAuth Handler",
+      "description": "Implement POST /auth/callback endpoint for Bluesky OAuth flow. Handle token exchange and return session data to client.",
+      "layer": "backend",
+      "dependencies": ["backend-did-resolution"],
+      "done": true
+    },
+    {
+      "id": "backend-did-document",
+      "name": "DID Document Hosting",
+      "description": "Serve /.well-known/did.json for the feed generator's did:web identity. Required for Bluesky to verify the feed generator.",
+      "layer": "backend",
+      "dependencies": ["backend-health"],
+      "done": true
+    },
+    {
+      "id": "backend-feed-generator",
+      "name": "Haiku Feed Generator",
+      "description": "Implement Bluesky custom feed: GET /xrpc/app.bsky.feed.getFeedSkeleton and GET /xrpc/app.bsky.feed.describeFeedGenerator. FeedGeneratorService ranks haikus by likes and recency with configurable weights.",
+      "layer": "backend",
+      "dependencies": ["backend-database", "backend-did-document"],
+      "done": true
+    },
+    {
+      "id": "backend-firehose-haiku",
+      "name": "Firehose Haiku Indexer",
+      "description": "FirehoseService subscribes to Bluesky firehose via WebSocket. Index app.bsky.feed.post records containing 'via @brew-haiku.app' suffix into haiku_posts table.",
+      "layer": "backend",
+      "dependencies": ["backend-database"],
+      "done": true
+    },
+    {
+      "id": "backend-firehose-timer",
+      "name": "Firehose Timer Save Indexer",
+      "description": "Extend FirehoseService to monitor app.brew-haiku.savedTimer create/delete events. Increment/decrement save_count in timer_index. Add/remove timers from index based on save count.",
+      "layer": "backend",
+      "dependencies": ["backend-firehose-haiku", "backend-timer-crud"],
+      "done": true
+    },
+    {
+      "id": "backend-like-refresh",
+      "name": "Like Count Refresh Job",
+      "description": "Background job that periodically refreshes like_count for recent haiku posts by querying Bluesky AppView API. Updates haiku_posts table.",
+      "layer": "backend",
+      "dependencies": ["backend-firehose-haiku"],
+      "done": true
+    },
+    {
+      "id": "frontend-setup",
+      "name": "Flutter Project Setup",
+      "description": "Initialize Flutter project with Riverpod state management, configure pubspec.yaml with dependencies (flutter_riverpod, flutter_secure_storage, bluesky, atproto). Set up project structure and flutter_test.",
+      "layer": "frontend",
+      "dependencies": [],
+      "done": true
+    },
+    {
+      "id": "frontend-theme",
+      "name": "Design System and Theming",
+      "description": "Implement 'Morning Fog' adaptive theme system using ThemeData. Configure color palettes for brew categories (light tea, dark tea, light coffee, dark coffee). Set up typography with Playfair Display and Inter fonts.",
+      "layer": "frontend",
+      "dependencies": ["frontend-setup"],
+      "done": true
+    },
+    {
+      "id": "frontend-splash",
+      "name": "Splash Screen",
+      "description": "Create minimalist splash screen with Brew Haiku logo and app name. Implement proper Flutter splash screen configuration for iOS and Android.",
+      "layer": "frontend",
+      "dependencies": ["frontend-theme"],
+      "done": true
+    },
+    {
+      "id": "frontend-onboarding",
+      "name": "Onboarding Carousel",
+      "description": "Build 3-screen onboarding PageView: 'Transform your brew into a ritual', 'Stay present. No distractions.', 'Complete your ritual. Write a haiku.' Include skip option and navigation dots.",
+      "layer": "frontend",
+      "dependencies": ["frontend-theme"],
+      "done": true
+    },
+    {
+      "id": "frontend-auth",
+      "name": "Bluesky Authentication",
+      "description": "Implement authStateProvider with Bluesky OAuth flow. Handle 'Sign in with Bluesky' button, token storage in Flutter Secure Storage, automatic token refresh, and session management.",
+      "layer": "frontend",
+      "dependencies": ["frontend-setup"],
+      "done": true
+    },
+    {
+      "id": "frontend-default-timers",
+      "name": "Default Timers for Anonymous Users",
+      "description": "Create hardcoded default timers: Simple Pour Over, French Press, Green Tea, Black Tea, Gongfu Intro. Available offline without authentication.",
+      "layer": "frontend",
+      "dependencies": ["frontend-setup"],
+      "done": true
+    },
+    {
+      "id": "frontend-timer-selection",
+      "name": "Timer Selection UI",
+      "description": "Build vessel selection screen with pre-configured vessels (V60, Chemex, AeroPress, French Press, Gaiwan, Kyusu, etc.). Display default ratios and times. Allow custom timer creation.",
+      "layer": "frontend",
+      "dependencies": ["frontend-theme", "frontend-default-timers"],
+      "done": true
+    },
+    {
+      "id": "frontend-brew-config",
+      "name": "Brew Configuration Screen",
+      "description": "Implement ratio calculator UI with TextFormField inputs. Real-time water calculation: Water (ml) = Dry (g) × Ratio. Support for timed and indeterminate steps configuration.",
+      "layer": "frontend",
+      "dependencies": ["frontend-timer-selection"],
+      "done": true
+    },
+    {
+      "id": "frontend-timer-state",
+      "name": "Timer State Management",
+      "description": "Create timerStateProvider and currentBrewProvider with Riverpod. Handle timer lifecycle: not started, running, step transitions, completed. Support multi-step brews with automatic progression.",
+      "layer": "frontend",
+      "dependencies": ["frontend-setup"],
+      "done": true
+    },
+    {
+      "id": "frontend-timer-visual",
+      "name": "Timer Visualization",
+      "description": "Build CustomPainter timer animation depicting rising steam or filling vessel. Display current step, countdown, total time remaining. Include optional audio chimes for step transitions.",
+      "layer": "frontend",
+      "dependencies": ["frontend-timer-state", "frontend-theme"],
+      "done": true
+    },
+    {
+      "id": "frontend-focus-guard",
+      "name": "Focus Guard System",
+      "description": "Implement focusGuardProvider with AppLifecycleListener. Track interruptions when app is backgrounded (timer continues running). Record interruption count and total time away.",
+      "layer": "frontend",
+      "dependencies": ["frontend-timer-state"],
+      "done": true
+    },
+    {
+      "id": "frontend-interrupted-overlay",
+      "name": "Ritual Interrupted Overlay",
+      "description": "Create BackdropFilter blur overlay when returning from background. Show time spent away. Require 2-second long-press on 'Return to Ritual' button with haptic feedback.",
+      "layer": "frontend",
+      "dependencies": ["frontend-focus-guard"],
+      "done": true
+    },
+    {
+      "id": "frontend-syllable-counter",
+      "name": "Syllable Counting Algorithm",
+      "description": "Implement syllable counting using CMU Pronouncing Dictionary with vowel-counting fallback. Handle contractions and edge cases. Real-time updates on keystroke.",
+      "layer": "frontend",
+      "dependencies": ["frontend-setup"],
+      "done": true
+    },
+    {
+      "id": "frontend-haiku-composer",
+      "name": "Haiku Composer with Soft Format",
+      "description": "Build haiku text input with auto-line breaking at 5/7/5 syllables. Visual progress indicators per line. Manual line break with Enter key. Backspace returns to previous line.",
+      "layer": "frontend",
+      "dependencies": ["frontend-syllable-counter", "frontend-theme"],
+      "done": true
+    },
+    {
+      "id": "frontend-share-card",
+      "name": "Share Card Generation",
+      "description": "Use RepaintBoundary to export haiku as styled PNG image. Include brew context (vessel, time, ratio). Options: Share to Bluesky, Save to device, Copy text.",
+      "layer": "frontend",
+      "dependencies": ["frontend-haiku-composer"],
+      "done": true
+    },
+    {
+      "id": "frontend-post-haiku",
+      "name": "Post Haiku to Bluesky",
+      "description": "Create app.bsky.feed.post record on user's PDS with haiku text and 'via @brew-haiku.app' signature. Requires authentication.",
+      "layer": "frontend",
+      "dependencies": ["frontend-auth", "frontend-share-card"],
+      "done": true
+    },
+    {
+      "id": "frontend-haiku-feed",
+      "name": "Haiku Feed Display",
+      "description": "Fetch and display haiku feed using standard app.bsky.feed.getFeed with custom feed URI. PageView carousel with slow fade transitions during timer. Cache with haikuCacheProvider.",
+      "layer": "frontend",
+      "dependencies": ["frontend-auth", "frontend-theme"],
+      "done": true
+    },
+    {
+      "id": "frontend-like-haiku",
+      "name": "Like Haiku Interaction",
+      "description": "Implement heart button on haiku cards. Create app.bsky.feed.like record on user's PDS. Haptic feedback on tap. Optimistic UI update.",
+      "layer": "frontend",
+      "dependencies": ["frontend-haiku-feed"],
+      "done": true
+    },
+    {
+      "id": "frontend-timer-search",
+      "name": "Timer Search UI",
+      "description": "Build search interface for discovering timer recipes. Query GET /timers/search API. Filter by brew type and vessel. Display results with save counts.",
+      "layer": "frontend",
+      "dependencies": ["frontend-theme"],
+      "done": true
+    },
+    {
+      "id": "frontend-save-timer",
+      "name": "Save Timer Functionality",
+      "description": "Implement save button on timer cards. Create app.brew-haiku.savedTimer record on user's PDS with rkey derived from timer URI. Show saved timers in user's collection.",
+      "layer": "frontend",
+      "dependencies": ["frontend-auth", "frontend-timer-search"],
+      "done": true
+    },
+    {
+      "id": "frontend-create-timer",
+      "name": "Timer Creation and Publishing",
+      "description": "Build UI for creating custom timer recipes. Create app.brew-haiku.timer record on user's PDS. Auto-create savedTimer record. Navigate to timer after creation.",
+      "layer": "frontend",
+      "dependencies": ["frontend-auth", "frontend-brew-config"],
+      "done": true
+    },
+    {
+      "id": "lexicon-definitions",
+      "name": "ATProto Lexicon Definitions",
+      "description": "Create lexicon JSON files for app.brew-haiku.timer and app.brew-haiku.savedTimer. Include step type definitions (timed, indeterminate). Publish to repository.",
+      "layer": "shared",
+      "dependencies": [],
+      "done": true
+    }
+  ]
+}

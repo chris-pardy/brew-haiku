@@ -9,7 +9,6 @@ import { FirehoseService, FirehoseServiceLive } from "./services/firehose.js";
 import { FeedGeneratorServiceLive } from "./services/feed-generator.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
-const ENABLE_FIREHOSE = process.env.ENABLE_FIREHOSE !== "false";
 
 const AppRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
@@ -57,14 +56,10 @@ const program = Effect.gen(function* () {
   yield* Effect.fork(Layer.launch(ServerLive));
   yield* Effect.log(`Brew Haiku Feed Generator running on port ${PORT}`);
 
-  // Start firehose if enabled
-  if (ENABLE_FIREHOSE) {
-    const firehose = yield* FirehoseService;
-    yield* firehose.start();
-    yield* Effect.log("Firehose indexer started");
-  } else {
-    yield* Effect.log("Firehose disabled (set ENABLE_FIREHOSE=true to enable)");
-  }
+  // Start firehose
+  const firehose = yield* FirehoseService;
+  yield* firehose.start();
+  yield* Effect.log("Firehose indexer started");
 
   // Keep running
   yield* Effect.never;

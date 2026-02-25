@@ -78,47 +78,23 @@ describe("Haiku Post Detection", () => {
     const program = Effect.gen(function* () {
       const service = yield* makeFirehoseService;
       return {
-        withSignature: service.isHaikuPost(
-          "Steam rises slowly\nPatience rewards the waiting\nFirst sip pure bliss\n\nvia @brew-haiku.app"
+        validHaiku: service.isHaikuPost(
+          "Steam rises slowly\nPatience rewards the waiting\nFirst sip is pure bliss"
         ),
-        withoutSignature: service.isHaikuPost(
-          "Just a regular post without the signature"
+        notHaiku: service.isHaikuPost(
+          "Just a regular post without haiku structure"
         ),
-        signatureOnly: service.isHaikuPost("via @brew-haiku.app"),
-        withWhitespace: service.isHaikuPost(
-          "Some text\n\nvia @brew-haiku.app   "
+        haikuWithSignature: service.isHaikuPost(
+          "Steam rises slowly\nPatience rewards the waiting\nFirst sip is pure bliss\n\nvia @brew-haiku.app"
         ),
       };
     }).pipe(Effect.provide(TestLayer));
 
     const results = await Effect.runPromise(program);
 
-    expect(results.withSignature).toBe(true);
-    expect(results.withoutSignature).toBe(false);
-    expect(results.signatureOnly).toBe(true);
-    expect(results.withWhitespace).toBe(true);
-  });
-
-  test("isHaikuPost is case-sensitive", async () => {
-    const TestDbLayer = Layer.succeed(DatabaseService, dbService);
-    const TestLayer = TestDbLayer.pipe(
-      Layer.provideMerge(MockJetstreamService())
-    );
-
-    const program = Effect.gen(function* () {
-      const service = yield* makeFirehoseService;
-      return {
-        correct: service.isHaikuPost("test\n\nvia @brew-haiku.app"),
-        uppercase: service.isHaikuPost("test\n\nVIA @BREW-HAIKU.APP"),
-        mixedCase: service.isHaikuPost("test\n\nVia @Brew-Haiku.App"),
-      };
-    }).pipe(Effect.provide(TestLayer));
-
-    const results = await Effect.runPromise(program);
-
-    expect(results.correct).toBe(true);
-    expect(results.uppercase).toBe(false);
-    expect(results.mixedCase).toBe(false);
+    expect(results.validHaiku).toBe(true);
+    expect(results.notHaiku).toBe(false);
+    expect(results.haikuWithSignature).toBe(true);
   });
 });
 

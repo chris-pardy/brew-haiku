@@ -1,5 +1,5 @@
 import { Effect, Context, Layer, Stream, Fiber, Ref, Duration, Scope } from "effect";
-import { DatabaseService, type HaikuPostRecord, type TimerRecord } from "./database.js";
+import { DatabaseService, type HaikuPostRecord } from "./database.js";
 import { type FeedConfig, scoreSql } from "./feed-generator.js";
 import {
   JetstreamService,
@@ -11,10 +11,8 @@ import {
 } from "./jetstream.js";
 import {
   createHaikuIndexer,
-  createTimerIndexer,
   createLikeIndexer,
   createCursorPersister,
-  filterSavedTimerEvents,
   filterLikeEvents,
   HAIKU_SIGNATURE,
   SAVED_TIMER_COLLECTION,
@@ -88,7 +86,7 @@ export const makeFirehoseService = Effect.gen(function* () {
 
   // Legacy helper functions
   const isHaikuPost = (text: string): boolean => {
-    return text.trim().endsWith(HAIKU_SIGNATURE);
+    return detectHaiku(text).isHaiku;
   };
 
   const isSavedTimerEvent = (collection: string): boolean => {
@@ -124,7 +122,6 @@ export const makeFirehoseService = Effect.gen(function* () {
 
   // Create indexers
   const haikuIndexer = yield* createHaikuIndexer;
-  const timerIndexer = yield* createTimerIndexer;
   const likeIndexer = yield* createLikeIndexer;
 
   const RETENTION_HOURS = parseInt(process.env.RETENTION_HOURS || "6", 10);
@@ -198,7 +195,6 @@ export const makeFirehoseService = Effect.gen(function* () {
         cursor: cursor ?? undefined,
         wantedCollections: options.wantedCollections ?? [
           POST_COLLECTION,
-          SAVED_TIMER_COLLECTION,
           LIKE_COLLECTION,
         ],
       };
@@ -221,9 +217,9 @@ export const makeFirehoseService = Effect.gen(function* () {
             )
           );
 
-          // Fan out to 3 consumers: posts (haiku + deletes), timers, likes
-          const [postStream, timerStream, likeStream] = yield* trackedStream.pipe(
-            Stream.broadcast(3, 100)
+          // Fan out to 2 consumers: posts (haiku + deletes), likes
+          const [postStream, likeStream] = yield* trackedStream.pipe(
+            Stream.broadcast(2, 100)
           );
 
           // Cursor persister loop — reads from lastCursorRef every 30s
@@ -257,18 +253,6 @@ export const makeFirehoseService = Effect.gen(function* () {
                   haikuIndexer.indexPost(event).pipe(
                     Effect.catchAll((error) =>
                       Effect.logError(`Haiku indexer error: ${error.message}`)
-                    )
-                  )
-                ),
-                Stream.runDrain
-              ),
-
-              // Timer indexer
-              filterSavedTimerEvents(timerStream).pipe(
-                Stream.mapEffect((event) =>
-                  timerIndexer.processEvent(event).pipe(
-                    Effect.catchAll((error) =>
-                      Effect.logError(`Timer indexer error: ${error.message}`)
                     )
                   )
                 ),

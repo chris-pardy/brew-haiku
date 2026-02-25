@@ -129,8 +129,8 @@ export const makeFirehoseService = Effect.gen(function* () {
   const CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // every 10 minutes
   const cleanupConfig: FeedConfig = {
     likeWeight: parseFloat(process.env.LIKE_WEIGHT || "1.0"),
-    recencyWeight: parseFloat(process.env.RECENCY_WEIGHT || "2.0"),
-    recencyHalfLifeHours: parseFloat(process.env.RECENCY_HALF_LIFE_HOURS || "24"),
+    recencyWeight: parseFloat(process.env.RECENCY_WEIGHT || "100.0"),
+    recencyHalfLifeHours: parseFloat(process.env.RECENCY_HALF_LIFE_HOURS || "6"),
     signatureBonus: parseFloat(process.env.SIGNATURE_BONUS || "50.0"),
   };
 

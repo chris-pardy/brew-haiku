@@ -2,7 +2,7 @@ app = "brew-haiku"
 primary_region = "sjc"
 
 [env]
-  HOST = "0.0.0.0"
+  HOST = "::"
   # Gateway
   GATEWAY_PORT = "8080"
   FEED_INTERNAL_URL = "http://feed.process.brew-haiku.internal:8080"

@@ -26,7 +26,7 @@ COPY gateway/src/ gateway/src/
 # Create volume mount point
 RUN mkdir -p /data
 
-ENV HOST=0.0.0.0
+ENV HOST=::
 EXPOSE 8080 8081 8082 8083
 
 # Default CMD — overridden by fly.toml [processes]

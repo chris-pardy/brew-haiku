@@ -1,7 +1,8 @@
 import { pipeline } from "@huggingface/transformers";
 
-console.log("Downloading zero-shot classification model...");
+// Download the q8 model (used on Linux in production)
+console.log("Downloading zero-shot classification model (q8)...");
 await pipeline("zero-shot-classification", "Xenova/mobilebert-uncased-mnli", {
-  dtype: "fp32",
+  dtype: "q8",
 });
 console.log("Model downloaded successfully.");

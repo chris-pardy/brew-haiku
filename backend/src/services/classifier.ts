@@ -68,14 +68,18 @@ const ZERO_SCORES: CategoryScores = {
   coffee: 0, tea: 0, nature: 0, relaxation: 0, morning: 0, evening: 0,
 };
 
+// q8 crashes with a C++ exception on macOS ARM64 onnxruntime-node;
+// works fine on Linux x86_64. Fall back to fp32 on macOS.
+const MODEL_DTYPE = process.platform === "darwin" ? "fp32" : "q8";
+
 // Load model eagerly at layer construction time
 const makeClassifier = Effect.tryPromise({
   try: async () => {
-    console.log("Loading zero-shot classification model...");
+    console.log(`Loading zero-shot classification model (${MODEL_DTYPE})...`);
     const classifier = await pipeline(
       "zero-shot-classification",
       "Xenova/mobilebert-uncased-mnli",
-      { dtype: "fp32" }
+      { dtype: MODEL_DTYPE }
     );
     console.log("Classification model loaded.");
 

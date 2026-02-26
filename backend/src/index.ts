@@ -10,6 +10,7 @@ import { FeedGeneratorServiceLive } from "./services/feed-generator.js";
 import { FirehoseServiceWorker } from "./services/firehose-worker-layer.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
+const HOST = process.env.HOST || "localhost";
 
 // Spawn firehose worker on a separate thread
 const firehoseWorker = new Worker(
@@ -53,7 +54,7 @@ const FeedGeneratorLayer = FeedGeneratorServiceLive().pipe(Layer.provide(DbLayer
 const AppLayers = Layer.mergeAll(DbLayer, FirehoseLayer, FeedGeneratorLayer);
 
 const ServerLive = app.pipe(
-  Layer.provide(BunHttpServer.layer({ port: PORT })),
+  Layer.provide(BunHttpServer.layer({ port: PORT, hostname: HOST })),
   Layer.provide(AppLayers)
 );
 

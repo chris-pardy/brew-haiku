@@ -9,11 +9,10 @@ import type { JetstreamOptions } from "../services/jetstream.js";
 // Message protocol
 type WorkerCommand =
   | { type: "start"; options?: JetstreamOptions }
-  | { type: "stop" }
-  | { type: "status" };
+  | { type: "stop" };
 
 type WorkerMessage =
-  | { type: "status"; data: FirehoseStatus }
+  | { type: "stats"; data: FirehoseStatus }
   | { type: "started" }
   | { type: "stopped" }
   | { type: "error"; message: string };
@@ -49,6 +48,28 @@ const servicePromise = Effect.gen(function* () {
   Effect.runPromise
 );
 
+// Push stats to main thread every 10 seconds
+let statsInterval: ReturnType<typeof setInterval> | null = null;
+
+function startStatsPush(service: Awaited<typeof servicePromise>) {
+  if (statsInterval) return;
+  statsInterval = setInterval(async () => {
+    try {
+      const data = await Effect.runPromise(service.status());
+      post({ type: "stats", data });
+    } catch {
+      // Ignore stats push errors
+    }
+  }, 10_000);
+}
+
+function stopStatsPush() {
+  if (statsInterval) {
+    clearInterval(statsInterval);
+    statsInterval = null;
+  }
+}
+
 self.onmessage = async (event: MessageEvent<WorkerCommand>) => {
   const cmd = event.data;
 
@@ -58,17 +79,17 @@ self.onmessage = async (event: MessageEvent<WorkerCommand>) => {
     switch (cmd.type) {
       case "start": {
         await Effect.runPromise(service.start(cmd.options));
+        // Push initial stats immediately, then periodically
+        const data = await Effect.runPromise(service.status());
+        post({ type: "stats", data });
+        startStatsPush(service);
         post({ type: "started" });
         break;
       }
       case "stop": {
+        stopStatsPush();
         await Effect.runPromise(service.stop());
         post({ type: "stopped" });
-        break;
-      }
-      case "status": {
-        const data = await Effect.runPromise(service.status());
-        post({ type: "status", data });
         break;
       }
     }

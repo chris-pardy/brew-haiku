@@ -3,44 +3,52 @@ import { FirehoseService, type FirehoseStatus, type FirehoseError } from "./fire
 import type { JetstreamOptions } from "./jetstream.js";
 import { detectHaiku } from "./haiku-detector.js";
 import {
-  HAIKU_SIGNATURE,
   SAVED_TIMER_COLLECTION,
 } from "./firehose-indexers.js";
 
 // Message types matching the worker protocol
 type WorkerCommand =
   | { type: "start"; options?: JetstreamOptions }
-  | { type: "stop" }
-  | { type: "status" };
+  | { type: "stop" };
 
 type WorkerMessage =
-  | { type: "status"; data: FirehoseStatus }
+  | { type: "stats"; data: FirehoseStatus }
   | { type: "started" }
   | { type: "stopped" }
   | { type: "error"; message: string };
 
 /**
  * Creates a FirehoseService layer backed by a Bun Worker.
- * The worker runs the actual firehose pipeline on a separate thread.
+ * The worker pushes stats to the main thread periodically;
+ * the main thread caches the latest stats and returns them immediately.
  */
 export const FirehoseServiceWorker = (worker: Worker) => {
-  // Pending status request resolvers
-  let statusResolve: ((status: FirehoseStatus) => void) | null = null;
+  // Cached stats from worker — updated via push
+  let latestStats: FirehoseStatus = {
+    running: false,
+    lastCursor: null,
+    eventsProcessed: 0,
+    haikuDetected: 0,
+    haikuIndexed: 0,
+    likesProcessed: 0,
+  };
+
   let startResolve: (() => void) | null = null;
   let stopResolve: (() => void) | null = null;
 
   worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
     const msg = event.data;
     switch (msg.type) {
-      case "status":
-        statusResolve?.(msg.data);
-        statusResolve = null;
+      case "stats":
+        latestStats = msg.data;
         break;
       case "started":
+        latestStats = { ...latestStats, running: true };
         startResolve?.();
         startResolve = null;
         break;
       case "stopped":
+        latestStats = { ...latestStats, running: false };
         stopResolve?.();
         stopResolve = null;
         break;
@@ -82,56 +90,9 @@ export const FirehoseServiceWorker = (worker: Worker) => {
           new Error("Failed to stop firehose worker") as unknown as FirehoseError,
       }).pipe(Effect.asVoid),
 
-    status: () =>
-      Effect.tryPromise({
-        try: () =>
-          new Promise<FirehoseStatus>((resolve) => {
-            const timeout = setTimeout(() => {
-              statusResolve = null;
-              resolve({
-                running: true,
-                lastCursor: null,
-                eventsProcessed: -1,
-                haikuDetected: -1,
-                haikuIndexed: -1,
-                likesProcessed: -1,
-              });
-            }, 3000);
-            statusResolve = (status) => {
-              clearTimeout(timeout);
-              resolve(status);
-            };
-            sendCommand({ type: "status" });
-          }),
-        catch: () =>
-          new Error("Failed to get firehose status") as unknown as FirehoseError,
-      }),
+    // Return cached stats immediately — no round-trip to worker
+    status: () => Effect.succeed(latestStats),
 
-    getLastCursor: () =>
-      Effect.tryPromise({
-        try: async () => {
-          const status = await new Promise<FirehoseStatus>((resolve) => {
-            const timeout = setTimeout(() => {
-              statusResolve = null;
-              resolve({
-                running: true,
-                lastCursor: null,
-                eventsProcessed: -1,
-                haikuDetected: -1,
-                haikuIndexed: -1,
-                likesProcessed: -1,
-              });
-            }, 3000);
-            statusResolve = (status) => {
-              clearTimeout(timeout);
-              resolve(status);
-            };
-            sendCommand({ type: "status" });
-          });
-          return status.lastCursor;
-        },
-        catch: () =>
-          new Error("Failed to get cursor from worker") as unknown as FirehoseError,
-      }),
+    getLastCursor: () => Effect.succeed(latestStats.lastCursor),
   });
 };

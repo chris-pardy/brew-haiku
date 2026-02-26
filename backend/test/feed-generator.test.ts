@@ -12,6 +12,7 @@ import {
   makeFeedGeneratorService,
   FeedGeneratorError,
   type FeedConfig,
+  type FeedConfigFile,
 } from "../src/services/feed-generator.js";
 import { feedRoutes, FEED_URI } from "../src/routes/feed.js";
 
@@ -153,25 +154,41 @@ describe("FeedGeneratorService with Database", () => {
     expect(secondPage.cursor).toBe("4");
   });
 
-  test("uses configurable weights", async () => {
+  test("uses configurable weights from config file", async () => {
     const TestLayer = Layer.succeed(DatabaseService, dbService);
 
-    const customConfig: Partial<FeedConfig> = {
-      likeWeight: 5.0,
-      recencyWeight: 0.5,
-      recencyHalfLifeHours: 12,
+    const customConfigFile: FeedConfigFile = {
+      base: {
+        likeWeight: 5.0,
+        recencyWeight: 0.5,
+        recencyHalfLifeHours: 12,
+        signatureBonus: 50.0,
+        coffeeWeight: 15.0,
+        teaWeight: 15.0,
+        natureWeight: 10.0,
+        relaxationWeight: 5.0,
+        morningWeight: 0,
+        afternoonWeight: 0,
+        eveningWeight: 0,
+      },
+      type: {
+        coffee: { coffeeWeight: 30.0, teaWeight: 5.0 },
+        tea: { teaWeight: 30.0, coffeeWeight: 5.0 },
+      },
+      time: {},
     };
 
     const program = Effect.gen(function* () {
-      const service = yield* makeFeedGeneratorService(customConfig);
-      return service.config;
+      const service = yield* makeFeedGeneratorService(customConfigFile);
+      return service.configFile;
     }).pipe(Effect.provide(TestLayer));
 
-    const config = await Effect.runPromise(program);
+    const configFile = await Effect.runPromise(program);
 
-    expect(config.likeWeight).toBe(5.0);
-    expect(config.recencyWeight).toBe(0.5);
-    expect(config.recencyHalfLifeHours).toBe(12);
+    expect(configFile.base.likeWeight).toBe(5.0);
+    expect(configFile.base.recencyWeight).toBe(0.5);
+    expect(configFile.base.recencyHalfLifeHours).toBe(12);
+    expect(configFile.type.coffee?.coffeeWeight).toBe(30.0);
   });
 });
 

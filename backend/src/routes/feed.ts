@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { HttpRouter, HttpServerResponse, HttpServerRequest } from "@effect/platform";
-import { FeedGeneratorService, FeedGeneratorError } from "../services/feed-generator.js";
+import { FeedGeneratorService, type FeedType, type FeedTime } from "../services/feed-generator.js";
 import { SERVICE_DID, DOMAIN } from "./did-document.js";
 
 const PUBLISHER_DID = process.env.PUBLISHER_DID || "";
@@ -46,8 +46,21 @@ export const feedRoutes = HttpRouter.empty.pipe(
         );
       }
 
+      const typeParam = url.searchParams.get("type") || undefined;
+      const timeParam = url.searchParams.get("time") || undefined;
+
+      const validTypes = ["coffee", "tea"];
+      const validTimes = ["morning", "afternoon", "evening"];
+
+      const type = typeParam && validTypes.includes(typeParam)
+        ? (typeParam as FeedType)
+        : undefined;
+      const time = timeParam && validTimes.includes(timeParam)
+        ? (timeParam as FeedTime)
+        : undefined;
+
       const feedGenerator = yield* FeedGeneratorService;
-      const result = yield* feedGenerator.getFeedSkeleton(limit, cursor).pipe(
+      const result = yield* feedGenerator.getFeedSkeleton(limit, cursor, type, time).pipe(
         Effect.catchTag("FeedGeneratorError", (e) =>
           Effect.succeed({
             error: "InternalError",

@@ -1,0 +1,24 @@
+{
+  "base": {
+    "likeWeight": 1.0,
+    "recencyWeight": 100.0,
+    "recencyHalfLifeHours": 6,
+    "signatureBonus": 50.0,
+    "natureWeight": 10.0,
+    "relaxationWeight": 5.0,
+    "coffeeWeight": 15.0,
+    "teaWeight": 15.0,
+    "morningWeight": 0,
+    "afternoonWeight": 0,
+    "eveningWeight": 0
+  },
+  "type": {
+    "coffee": { "coffeeWeight": 30.0, "teaWeight": 5.0 },
+    "tea": { "teaWeight": 30.0, "coffeeWeight": 5.0 }
+  },
+  "time": {
+    "morning": { "morningWeight": 20.0 },
+    "afternoon": { "afternoonWeight": 20.0 },
+    "evening": { "eveningWeight": 20.0 }
+  }
+}

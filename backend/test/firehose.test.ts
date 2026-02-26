@@ -30,6 +30,7 @@ import {
   filterSavedTimerEvents,
   filterLikeEvents,
 } from "../src/services/firehose-indexers.js";
+import { ClassifierServiceTest } from "../src/services/classifier.js";
 
 // Mock JetstreamService for testing
 const MockJetstreamService = (events: JetstreamEvent[] = []) =>
@@ -72,7 +73,8 @@ describe("Haiku Post Detection", () => {
   test("isHaikuPost detects posts with signature", async () => {
     const TestDbLayer = Layer.succeed(DatabaseService, dbService);
     const TestLayer = TestDbLayer.pipe(
-      Layer.provideMerge(MockJetstreamService())
+      Layer.provideMerge(MockJetstreamService()),
+      Layer.provideMerge(ClassifierServiceTest)
     );
 
     const program = Effect.gen(function* () {
@@ -110,7 +112,7 @@ describe("Haiku Indexer", () => {
   });
 
   test("indexPost creates database record", async () => {
-    const TestLayer = Layer.succeed(DatabaseService, dbService);
+    const TestLayer = Layer.mergeAll(Layer.succeed(DatabaseService, dbService), ClassifierServiceTest);
 
     const event: JetstreamCommitEvent = {
       did: "did:plc:test123",
@@ -150,7 +152,7 @@ describe("Haiku Indexer", () => {
   });
 
   test("indexPost handles delete operation", async () => {
-    const TestLayer = Layer.succeed(DatabaseService, dbService);
+    const TestLayer = Layer.mergeAll(Layer.succeed(DatabaseService, dbService), ClassifierServiceTest);
 
     // First create
     const createEvent: JetstreamCommitEvent = {
@@ -241,7 +243,8 @@ describe("SavedTimer Event Detection", () => {
   test("isSavedTimerEvent detects savedTimer collection", async () => {
     const TestDbLayer = Layer.succeed(DatabaseService, dbService);
     const TestLayer = TestDbLayer.pipe(
-      Layer.provideMerge(MockJetstreamService())
+      Layer.provideMerge(MockJetstreamService()),
+      Layer.provideMerge(ClassifierServiceTest)
     );
 
     const program = Effect.gen(function* () {
@@ -320,7 +323,7 @@ describe("Timer Indexer - Save Count Management", () => {
 
   test("updateSaveCount increments save count", async () => {
     const testTimer = insertTestTimer({ uri: "at://test/timer/1", save_count: 5 });
-    const TestLayer = Layer.succeed(DatabaseService, dbService);
+    const TestLayer = Layer.mergeAll(Layer.succeed(DatabaseService, dbService), ClassifierServiceTest);
 
     const program = Effect.gen(function* () {
       const indexer = yield* createTimerIndexer;
@@ -341,7 +344,7 @@ describe("Timer Indexer - Save Count Management", () => {
 
   test("updateSaveCount decrements save count", async () => {
     const testTimer = insertTestTimer({ uri: "at://test/timer/2", save_count: 10 });
-    const TestLayer = Layer.succeed(DatabaseService, dbService);
+    const TestLayer = Layer.mergeAll(Layer.succeed(DatabaseService, dbService), ClassifierServiceTest);
 
     const program = Effect.gen(function* () {
       const indexer = yield* createTimerIndexer;
@@ -362,7 +365,7 @@ describe("Timer Indexer - Save Count Management", () => {
 
   test("updateSaveCount does not go below zero", async () => {
     const testTimer = insertTestTimer({ uri: "at://test/timer/3", save_count: 2 });
-    const TestLayer = Layer.succeed(DatabaseService, dbService);
+    const TestLayer = Layer.mergeAll(Layer.succeed(DatabaseService, dbService), ClassifierServiceTest);
 
     const program = Effect.gen(function* () {
       const indexer = yield* createTimerIndexer;
@@ -561,7 +564,7 @@ describe("Like Indexer", () => {
   test("processLike increments like count for indexed haiku", async () => {
     const postUri = "at://did:plc:author/app.bsky.feed.post/post123";
     insertTestHaiku(postUri);
-    const TestLayer = Layer.succeed(DatabaseService, dbService);
+    const TestLayer = Layer.mergeAll(Layer.succeed(DatabaseService, dbService), ClassifierServiceTest);
 
     const likeEvent: JetstreamCommitEvent = {
       did: "did:plc:liker",
@@ -599,7 +602,7 @@ describe("Like Indexer", () => {
   test("processLike tracks like in haiku_likes table", async () => {
     const postUri = "at://did:plc:author/app.bsky.feed.post/post123";
     insertTestHaiku(postUri);
-    const TestLayer = Layer.succeed(DatabaseService, dbService);
+    const TestLayer = Layer.mergeAll(Layer.succeed(DatabaseService, dbService), ClassifierServiceTest);
 
     const likeEvent: JetstreamCommitEvent = {
       did: "did:plc:liker",
@@ -638,7 +641,7 @@ describe("Like Indexer", () => {
   test("processLike decrements like count on unlike", async () => {
     const postUri = "at://did:plc:author/app.bsky.feed.post/post123";
     insertTestHaiku(postUri);
-    const TestLayer = Layer.succeed(DatabaseService, dbService);
+    const TestLayer = Layer.mergeAll(Layer.succeed(DatabaseService, dbService), ClassifierServiceTest);
 
     // First create the like
     const createEvent: JetstreamCommitEvent = {
@@ -695,7 +698,7 @@ describe("Like Indexer", () => {
   });
 
   test("processLike ignores likes on non-indexed posts", async () => {
-    const TestLayer = Layer.succeed(DatabaseService, dbService);
+    const TestLayer = Layer.mergeAll(Layer.succeed(DatabaseService, dbService), ClassifierServiceTest);
 
     const likeEvent: JetstreamCommitEvent = {
       did: "did:plc:liker",
@@ -741,7 +744,7 @@ describe("Post Deletion Cascades", () => {
   });
 
   test("deleting a post removes associated likes", async () => {
-    const TestLayer = Layer.succeed(DatabaseService, dbService);
+    const TestLayer = Layer.mergeAll(Layer.succeed(DatabaseService, dbService), ClassifierServiceTest);
     const postUri = "at://did:plc:author/app.bsky.feed.post/post123";
 
     // Create a haiku post

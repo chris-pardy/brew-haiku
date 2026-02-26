@@ -3,6 +3,7 @@ import { Effect, Layer } from "effect";
 import { makeDatabaseService, DatabaseService } from "../services/database.js";
 import { makeFirehoseService, FirehoseService, type FirehoseStatus } from "../services/firehose.js";
 import { JetstreamServiceLive, JetstreamService } from "../services/jetstream.js";
+import { ClassifierServiceLive } from "../services/classifier.js";
 import type { JetstreamOptions } from "../services/jetstream.js";
 
 // Message protocol
@@ -29,14 +30,16 @@ const DbLayer = Layer.effect(
 
 const JetstreamLayer = JetstreamServiceLive();
 
+const ClassifierLayer = ClassifierServiceLive;
+
 const FirehoseLayer = Layer.effect(
   FirehoseService,
   makeFirehoseService
 ).pipe(
-  Layer.provide(Layer.mergeAll(DbLayer, JetstreamLayer))
+  Layer.provide(Layer.mergeAll(DbLayer, JetstreamLayer, ClassifierLayer))
 );
 
-const AppLayers = Layer.mergeAll(DbLayer, JetstreamLayer, FirehoseLayer);
+const AppLayers = Layer.mergeAll(DbLayer, JetstreamLayer, ClassifierLayer, FirehoseLayer);
 
 // Resolve the firehose service once, reuse for all commands
 const servicePromise = Effect.gen(function* () {

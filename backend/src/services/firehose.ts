@@ -1,6 +1,6 @@
 import { Effect, Context, Layer, Stream, Fiber, Ref, Duration, Scope } from "effect";
 import { DatabaseService, type HaikuPostRecord } from "./database.js";
-import { type FeedConfig, scoreSql } from "./feed-generator.js";
+import { type FeedConfig, scoreSql, loadFeedConfigFile } from "./feed-generator.js";
 import {
   JetstreamService,
   type JetstreamEvent,
@@ -21,6 +21,7 @@ import {
   LIKE_COLLECTION,
 } from "./firehose-indexers.js";
 import { detectHaiku } from "./haiku-detector.js";
+import { ClassifierServiceLive } from "./classifier.js";
 
 export class FirehoseError extends Error {
   readonly _tag = "FirehoseError";
@@ -57,6 +58,9 @@ export interface FirehoseStatus {
   running: boolean;
   lastCursor: number | null;
   eventsProcessed: number;
+  haikuDetected: number;
+  haikuIndexed: number;
+  likesProcessed: number;
 }
 
 export class FirehoseService extends Context.Tag("FirehoseService")<
@@ -82,6 +86,9 @@ export const makeFirehoseService = Effect.gen(function* () {
   const runningRef = yield* Ref.make(false);
   const fiberRef = yield* Ref.make<Fiber.RuntimeFiber<void, FirehoseError> | null>(null);
   const eventsProcessedRef = yield* Ref.make(0);
+  const haikuDetectedRef = yield* Ref.make(0);
+  const haikuIndexedRef = yield* Ref.make(0);
+  const likesProcessedRef = yield* Ref.make(0);
   const lastCursorRef = yield* Ref.make<number | null>(null);
 
   // Legacy helper functions
@@ -127,12 +134,7 @@ export const makeFirehoseService = Effect.gen(function* () {
   const RETENTION_HOURS = parseInt(process.env.RETENTION_HOURS || "6", 10);
   const TOP_N = parseInt(process.env.RETENTION_TOP_N || "40", 10);
   const CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // every 10 minutes
-  const cleanupConfig: FeedConfig = {
-    likeWeight: parseFloat(process.env.LIKE_WEIGHT || "1.0"),
-    recencyWeight: parseFloat(process.env.RECENCY_WEIGHT || "100.0"),
-    recencyHalfLifeHours: parseFloat(process.env.RECENCY_HALF_LIFE_HOURS || "6"),
-    signatureBonus: parseFloat(process.env.SIGNATURE_BONUS || "50.0"),
-  };
+  const cleanupConfig: FeedConfig = loadFeedConfigFile().base;
 
   // Periodic cleanup: keep top N by score + anything under RETENTION_HOURS old
   const runCleanup = Effect.gen(function* () {
@@ -249,8 +251,10 @@ export const makeFirehoseService = Effect.gen(function* () {
                   const text = e.commit.record?.text;
                   return typeof text === "string" && isHaikuPost(text);
                 }),
+                Stream.tap(() => Ref.update(haikuDetectedRef, (n) => n + 1)),
                 Stream.mapEffect((event) =>
                   haikuIndexer.indexPost(event).pipe(
+                    Effect.tap(() => Ref.update(haikuIndexedRef, (n) => n + 1)),
                     Effect.catchAll((error) =>
                       Effect.logError(`Haiku indexer error: ${error.message}`)
                     )
@@ -263,6 +267,7 @@ export const makeFirehoseService = Effect.gen(function* () {
               filterLikeEvents(likeStream).pipe(
                 Stream.mapEffect((event) =>
                   likeIndexer.processLike(event).pipe(
+                    Effect.tap(() => Ref.update(likesProcessedRef, (n) => n + 1)),
                     Effect.catchAll((error) =>
                       Effect.logError(`Like indexer error: ${error.message}`)
                     )
@@ -290,6 +295,9 @@ export const makeFirehoseService = Effect.gen(function* () {
 
       yield* Ref.set(runningRef, true);
       yield* Ref.set(eventsProcessedRef, 0);
+      yield* Ref.set(haikuDetectedRef, 0);
+      yield* Ref.set(haikuIndexedRef, 0);
+      yield* Ref.set(likesProcessedRef, 0);
 
       // Fork the firehose runner and cleanup loop
       const fiber = yield* Effect.all(
@@ -335,7 +343,10 @@ export const makeFirehoseService = Effect.gen(function* () {
       const running = yield* Ref.get(runningRef);
       const lastCursor = yield* Ref.get(lastCursorRef);
       const eventsProcessed = yield* Ref.get(eventsProcessedRef);
-      return { running, lastCursor, eventsProcessed };
+      const haikuDetected = yield* Ref.get(haikuDetectedRef);
+      const haikuIndexed = yield* Ref.get(haikuIndexedRef);
+      const likesProcessed = yield* Ref.get(likesProcessedRef);
+      return { running, lastCursor, eventsProcessed, haikuDetected, haikuIndexed, likesProcessed };
     });
 
   const getLastCursor = (): Effect.Effect<number | null, FirehoseError> =>
@@ -361,7 +372,8 @@ export const FirehoseServiceLive = Layer.effect(
   FirehoseService,
   makeFirehoseService
 ).pipe(
-  Layer.provide(JetstreamServiceLive())
+  Layer.provide(JetstreamServiceLive()),
+  Layer.provide(ClassifierServiceLive)
 );
 
 export { HAIKU_SIGNATURE, SAVED_TIMER_COLLECTION, TIMER_COLLECTION };

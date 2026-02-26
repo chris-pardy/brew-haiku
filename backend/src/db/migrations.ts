@@ -146,6 +146,25 @@ export const migrations: Migration[] = [
       db.run(`CREATE INDEX IF NOT EXISTS idx_haiku_likes_liker ON haiku_likes(liker_did)`);
     },
   },
+  {
+    version: 4,
+    name: "add_category_scores",
+    up: (db: Database) => {
+      db.run(`ALTER TABLE haiku_posts ADD COLUMN score_coffee REAL DEFAULT 0`);
+      db.run(`ALTER TABLE haiku_posts ADD COLUMN score_tea REAL DEFAULT 0`);
+      db.run(`ALTER TABLE haiku_posts ADD COLUMN score_morning REAL DEFAULT 0`);
+      db.run(`ALTER TABLE haiku_posts ADD COLUMN score_afternoon REAL DEFAULT 0`);
+      db.run(`ALTER TABLE haiku_posts ADD COLUMN score_evening REAL DEFAULT 0`);
+    },
+  },
+  {
+    version: 5,
+    name: "add_nature_relaxation_scores",
+    up: (db: Database) => {
+      db.run(`ALTER TABLE haiku_posts ADD COLUMN score_nature REAL DEFAULT 0`);
+      db.run(`ALTER TABLE haiku_posts ADD COLUMN score_relaxation REAL DEFAULT 0`);
+    },
+  },
 ];
 
 export function runMigrations(db: Database): void {

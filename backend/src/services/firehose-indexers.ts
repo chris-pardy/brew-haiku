@@ -7,6 +7,7 @@ import {
   filterByCollection,
 } from "./jetstream.js";
 import { detectHaiku } from "./haiku-detector.js";
+import { ClassifierService, type CategoryScores } from "./classifier.js";
 
 export class IndexerError extends Error {
   readonly _tag = "IndexerError";
@@ -154,51 +155,74 @@ export const filterLikeEvents = <E, R>(
 // Haiku indexer - processes haiku post events
 export const createHaikuIndexer = Effect.gen(function* () {
   const dbService = yield* DatabaseService;
+  const classifierService = yield* ClassifierService;
   const { db } = dbService;
 
   const indexPost = (event: JetstreamCommitEvent): Effect.Effect<void, IndexerError> =>
-    Effect.try({
-      try: () => {
-        const { did, commit } = event;
-        const { rkey, record, cid } = commit;
-        const uri = `at://${did}/${commit.collection}/${rkey}`;
+    Effect.gen(function* () {
+      const { did, commit } = event;
+      const { rkey, record, cid } = commit;
+      const uri = `at://${did}/${commit.collection}/${rkey}`;
 
-        if (commit.operation === "delete") {
-          // Delete the post and cascade delete associated likes
-          // This properly handles deletion of objectionable content
-          db.run("DELETE FROM haiku_likes WHERE post_uri = ?", [uri]);
-          db.run("DELETE FROM haiku_posts WHERE uri = ?", [uri]);
-          return;
-        }
+      if (commit.operation === "delete") {
+        yield* Effect.try({
+          try: () => {
+            db.run("DELETE FROM haiku_likes WHERE post_uri = ?", [uri]);
+            db.run("DELETE FROM haiku_posts WHERE uri = ?", [uri]);
+          },
+          catch: (error) => new IndexerError("Failed to delete haiku post", error),
+        });
+        return;
+      }
 
-        if (!record?.text || !cid) {
-          return;
-        }
+      if (!record?.text || !cid) {
+        return;
+      }
 
-        const haikuResult = detectHaiku(record.text as string);
-        const hasSignature = haikuResult.hasSignature ? 1 : 0;
+      const text = record.text as string;
+      const haikuResult = detectHaiku(text);
+      const hasSignature = haikuResult.hasSignature ? 1 : 0;
 
-        const createdAt =
-          typeof record.createdAt === "string"
-            ? new Date(record.createdAt).getTime()
-            : Date.now();
+      const createdAt =
+        typeof record.createdAt === "string"
+          ? new Date(record.createdAt).getTime()
+          : Date.now();
 
-        // For updates, preserve the existing like_count
-        // For creates, initialize to 0
-        const existing = db
-          .query<{ like_count: number }, [string]>(
-            "SELECT like_count FROM haiku_posts WHERE uri = ?"
-          )
-          .get(uri);
-        const likeCount = existing?.like_count ?? 0;
+      // Classify the haiku text into categories
+      const scores = yield* classifierService.classify(text).pipe(
+        Effect.catchAll((error) => {
+          Effect.logError(`Classification failed: ${error.message}`);
+          return Effect.succeed({
+            coffee: 0, tea: 0, morning: 0, afternoon: 0, evening: 0,
+          } as CategoryScores);
+        })
+      );
 
-        db.run(
-          `INSERT OR REPLACE INTO haiku_posts (uri, did, cid, text, has_signature, like_count, created_at, indexed_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [uri, did, cid, record.text as string, hasSignature, likeCount, createdAt, Date.now()]
-        );
-      },
-      catch: (error) => new IndexerError("Failed to index haiku post", error),
+      yield* Effect.try({
+        try: () => {
+          // For updates, preserve the existing like_count
+          const existing = db
+            .query<{ like_count: number }, [string]>(
+              "SELECT like_count FROM haiku_posts WHERE uri = ?"
+            )
+            .get(uri);
+          const likeCount = existing?.like_count ?? 0;
+
+          db.run(
+            `INSERT OR REPLACE INTO haiku_posts
+             (uri, did, cid, text, has_signature, like_count, created_at, indexed_at,
+              score_coffee, score_tea, score_morning, score_afternoon, score_evening,
+              score_nature, score_relaxation)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              uri, did, cid, text, hasSignature, likeCount, createdAt, Date.now(),
+              scores.coffee, scores.tea, scores.morning, scores.afternoon, scores.evening,
+              scores.nature, scores.relaxation,
+            ]
+          );
+        },
+        catch: (error) => new IndexerError("Failed to index haiku post", error),
+      });
     });
 
   return { indexPost };

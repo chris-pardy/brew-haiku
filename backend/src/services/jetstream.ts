@@ -163,18 +163,22 @@ export const makeJetstreamService = (
 
             // Set up message handler
             const messageHandler = (event: MessageEvent) => {
-              const data = typeof event.data === "string" ? event.data : "";
-              const parsed = parseJetstreamMessage(data);
+              try {
+                const data = typeof event.data === "string" ? event.data : "";
+                const parsed = parseJetstreamMessage(data);
 
-              if (parsed) {
-                // Update cursor
-                Ref.set(cursorRef, parsed.time_us).pipe(Effect.runSync);
+                if (parsed) {
+                  // Update cursor
+                  Ref.set(cursorRef, parsed.time_us).pipe(Effect.runSync);
 
-                // Offer to queue (non-blocking, will drop if full)
-                Queue.offer(queue, parsed).pipe(
-                  Effect.catchAll(() => Effect.void),
-                  Effect.runSync
-                );
+                  // Offer to queue (non-blocking, will drop if full or shut down)
+                  Queue.offer(queue, parsed).pipe(
+                    Effect.catchAll(() => Effect.void),
+                    Effect.runSync
+                  );
+                }
+              } catch {
+                // Queue was shut down — ignore remaining messages
               }
             };
 

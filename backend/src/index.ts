@@ -5,10 +5,16 @@ import { healthRoutes } from "./routes/health.js";
 import { didDocumentRoutes } from "./routes/did-document.js";
 import { feedRoutes } from "./routes/feed.js";
 import { DatabaseServiceLive } from "./services/database.js";
-import { FirehoseService, FirehoseServiceLive } from "./services/firehose.js";
+import { FirehoseService } from "./services/firehose.js";
 import { FeedGeneratorServiceLive } from "./services/feed-generator.js";
+import { FirehoseServiceWorker } from "./services/firehose-worker-layer.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
+
+// Spawn firehose worker on a separate thread
+const firehoseWorker = new Worker(
+  new URL("./workers/firehose-worker.ts", import.meta.url).href
+);
 
 const AppRouter = HttpRouter.empty.pipe(
   HttpRouter.get(
@@ -34,11 +40,11 @@ const AppRouter = HttpRouter.empty.pipe(
 
 const app = AppRouter.pipe(HttpServer.serve(HttpMiddleware.logger));
 
-// Database layer
+// Database layer (main thread — used for feed reads only)
 const DbLayer = DatabaseServiceLive(process.env.DATABASE_PATH);
 
-// Firehose layer depends on Database
-const FirehoseLayer = FirehoseServiceLive.pipe(Layer.provide(DbLayer));
+// Firehose layer backed by worker (no DB/Jetstream deps on main thread)
+const FirehoseLayer = FirehoseServiceWorker(firehoseWorker);
 
 // Feed generator depends on Database
 const FeedGeneratorLayer = FeedGeneratorServiceLive().pipe(Layer.provide(DbLayer));
@@ -56,10 +62,10 @@ const program = Effect.gen(function* () {
   yield* Effect.fork(Layer.launch(ServerLive));
   yield* Effect.log(`Brew Haiku Feed Generator running on port ${PORT}`);
 
-  // Start firehose
+  // Start firehose via worker
   const firehose = yield* FirehoseService;
   yield* firehose.start();
-  yield* Effect.log("Firehose indexer started");
+  yield* Effect.log("Firehose worker started");
 
   // Keep running
   yield* Effect.never;

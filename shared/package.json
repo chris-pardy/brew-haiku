@@ -1,0 +1,14 @@
+{
+  "name": "@brew-haiku/shared",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@effect/platform": "^0.94.1",
+    "effect": "^3.19.14"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  }
+}

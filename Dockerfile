@@ -1,18 +1,30 @@
-FROM oven/bun:1 AS builder
+FROM oven/bun:1
 WORKDIR /app
-COPY backend/package.json backend/bun.lock ./
-RUN bun install --frozen-lockfile --production
-COPY backend/src ./src
-COPY backend/tsconfig.json ./
 
-FROM oven/bun:1-slim
-WORKDIR /app
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/src ./src
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/tsconfig.json ./
-RUN mkdir -p /data && chown -R bun:bun /data
-USER bun
-ENV NODE_ENV=production PORT=8080 DATABASE_PATH=/data/brew-haiku.db
-EXPOSE 8080
-CMD ["bun", "run", "src/index.ts"]
+# Install dependencies — copy all workspace package.json files
+COPY package.json bun.lock ./
+COPY shared/package.json shared/
+COPY ingest/package.json ingest/
+COPY feed/package.json feed/
+COPY timers/package.json timers/
+RUN bun install --frozen-lockfile
+
+# Download classifier model (needed by ingest; feed/timers ignore it)
+COPY ingest/scripts/download-model.ts ingest/scripts/
+RUN bun run ingest/scripts/download-model.ts
+
+# Copy application source
+COPY shared/src/ shared/src/
+COPY ingest/src/ ingest/src/
+COPY feed/src/ feed/src/
+COPY feed/feed-config.json feed/
+COPY timers/src/ timers/src/
+
+# Create volume mount point
+RUN mkdir -p /data
+
+ENV HOST=0.0.0.0
+EXPOSE 8080 8081 8082 8083
+
+# Default CMD — overridden by fly.toml [processes]
+CMD ["bun", "run", "feed/src/index.ts"]

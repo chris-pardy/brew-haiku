@@ -25,12 +25,6 @@
             "knownValues": ["coffee", "tea"],
             "description": "Primary beverage category"
           },
-          "ratio": {
-            "type": "number",
-            "minimum": 1,
-            "maximum": 100,
-            "description": "Water to dry ingredient ratio (optional for non-ratio brews like grandpa style)"
-          },
           "steps": {
             "type": "array",
             "items": {
@@ -61,18 +55,34 @@
         "action": {
           "type": "string",
           "maxLength": 200,
-          "description": "Step instruction (e.g., 'Pour water in circles', 'Steep tea', 'Heat water to 165°C')"
+          "description": "Step instruction (e.g., 'Pour water in circles', 'Steep tea', 'Grind coffee')"
         },
         "stepType": {
           "type": "string",
-          "knownValues": ["timed", "indeterminate"],
-          "description": "Whether step has a fixed duration (timed) or user-controlled completion (indeterminate)"
+          "knownValues": ["timed", "indeterminate", "quantity"],
+          "description": "Whether step has a fixed duration (timed), user-controlled completion (indeterminate), or prompts the user to enter a quantity (quantity)"
         },
         "durationSeconds": {
           "type": "integer",
           "minimum": 1,
           "maximum": 3600,
-          "description": "Step duration in seconds (required if stepType is 'timed', ignored for 'indeterminate')"
+          "description": "Step duration in seconds (for 'timed' steps)"
+        },
+        "unit": {
+          "type": "string",
+          "knownValues": ["g", "oz", "ml"],
+          "description": "Unit for quantity entry (for 'quantity' steps)"
+        },
+        "ratioOfStep": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Zero-based index of a 'quantity' step to derive this step's quantity from"
+        },
+        "ratio": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 100,
+          "description": "Multiplier applied to the referenced quantity step's value (e.g., 16 means 16x the quantity)"
         }
       }
     }

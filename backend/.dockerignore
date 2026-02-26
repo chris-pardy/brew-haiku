@@ -1,6 +1,0 @@
-node_modules
-brew-haiku.db
-brew-haiku.db-shm
-brew-haiku.db-wal
-*.log
-test

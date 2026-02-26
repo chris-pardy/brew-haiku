@@ -2,32 +2,110 @@ app = "brew-haiku"
 primary_region = "sjc"
 
 [env]
-  PORT = "8080"
-  ENABLE_FIREHOSE = "true"
-  DATABASE_PATH = "/data/brew-haiku.db"
+  HOST = "0.0.0.0"
+  # Feed service
+  FEED_PORT = "8080"
+  FEED_INGEST_PORT = "8081"
+  FEED_DATABASE_PATH = "/data/feed.db"
+  # Timers service
+  TIMERS_PORT = "8083"
+  TIMERS_INGEST_PORT = "8082"
+  TIMERS_DATABASE_PATH = "/data/timers.db"
+  # Ingest worker
+  CURSOR_PATH = "/data/cursor"
+  FEED_INGEST_URL = "ws://feed.process.brew-haiku.internal:8081"
+  TIMER_INGEST_URL = "ws://timers.process.brew-haiku.internal:8082"
 
-[http_service]
+# ---------------------------------------------------------------------------
+# Process groups — feed, ingest, and timers run on separate machines
+# ---------------------------------------------------------------------------
+[processes]
+  feed = "bun run feed/src/index.ts"
+  ingest = "bun run ingest/src/index.ts"
+  timers = "bun run timers/src/index.ts"
+
+# Feed service handles HTTP traffic (feed skeleton, DID document)
+[[services]]
   internal_port = 8080
-  force_https = true
-  auto_stop_machines = "off"
-  auto_start_machines = true
-  min_machines_running = 1
-  processes = ["app"]
+  protocol = "tcp"
+  processes = ["feed"]
 
-[mounts]
-  source = "brew_haiku_data"
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+# Timers service handles HTTP traffic (timer CRUD, auth, search)
+[[services]]
+  internal_port = 8083
+  protocol = "tcp"
+  processes = ["timers"]
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+# Feed volume — SQLite database + ingestion
+[[mounts]]
+  source = "feed_data"
   destination = "/data"
+  processes = ["feed"]
 
+# Ingest volume — cursor file persistence
+[[mounts]]
+  source = "ingest_data"
+  destination = "/data"
+  processes = ["ingest"]
+
+# Timers volume — SQLite database + ingestion
+[[mounts]]
+  source = "timers_data"
+  destination = "/data"
+  processes = ["timers"]
+
+# Feed VM — lightweight, serves reads
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+  processes = ["feed"]
+
+# Ingest VM — needs more resources for ML classification
 [[vm]]
   memory = "1024mb"
   cpu_kind = "shared"
   cpus = 1
+  processes = ["ingest"]
+
+# Timers VM — lightweight, serves reads + timer ingestion
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+  processes = ["timers"]
 
 [checks]
-  [checks.health]
+  [checks.feed_health]
     type = "http"
     port = 8080
     path = "/health"
     interval = "30s"
-    timeout = "15s"
-    grace_period = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    processes = ["feed"]
+
+  [checks.timers_health]
+    type = "http"
+    port = 8083
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    processes = ["timers"]

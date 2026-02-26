@@ -1,4 +1,4 @@
-import { Effect, Stream, Ref, Duration, pipe } from "effect";
+import { Effect, Stream, Ref, Queue, Duration, pipe } from "effect";
 import { DatabaseService, type TimerRecord } from "./database.js";
 import {
   type JetstreamEvent,
@@ -7,7 +7,7 @@ import {
   filterByCollection,
 } from "./jetstream.js";
 import { detectHaiku } from "./haiku-detector.js";
-import { ClassifierService, type CategoryScores } from "./classifier.js";
+import { ClassifierService, type CategoryScores, applyKeywordBoosts } from "./classifier.js";
 
 export class IndexerError extends Error {
   readonly _tag = "IndexerError";
@@ -188,7 +188,9 @@ export const createHaikuIndexer = Effect.gen(function* () {
           ? new Date(record.createdAt).getTime()
           : Date.now();
 
-      // Classify the haiku text into categories
+      // Classify the haiku text into categories.
+      // Sleep briefly after inference to release CPU for the main thread
+      // on shared-cpu machines (ONNX native inference blocks the CPU).
       const scores = yield* classifierService.classify(text).pipe(
         Effect.catchAll((error) => {
           Effect.logError(`Classification failed: ${error.message}`);
@@ -197,6 +199,7 @@ export const createHaikuIndexer = Effect.gen(function* () {
           } as CategoryScores);
         })
       );
+      yield* Effect.sleep(Duration.millis(50));
 
       yield* Effect.try({
         try: () => {

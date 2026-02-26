@@ -199,7 +199,7 @@ export const createHaikuIndexer = Effect.gen(function* () {
           } as CategoryScores);
         })
       );
-      yield* Effect.sleep(Duration.millis(50));
+      yield* Effect.sleep(Duration.millis(200));
 
       yield* Effect.try({
         try: () => {

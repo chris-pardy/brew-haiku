@@ -122,7 +122,7 @@ const encodeCursor = (offset: number): string => btoa(String(offset));
 
 // ─── Write Procedures ───────────────────────────────────────────────────────
 
-const createTimerRoute = HttpRouter.post(
+const createTimerRoute = HttpRouter.empty.pipe(HttpRouter.post(
   "/xrpc/app.brew-haiku.createTimer",
   Effect.gen(function* () {
     const auth = yield* getAuth.pipe(
@@ -231,9 +231,9 @@ const createTimerRoute = HttpRouter.post(
       );
     })
   )
-);
+));
 
-const saveTimerRoute = HttpRouter.post(
+const saveTimerRoute = HttpRouter.empty.pipe(HttpRouter.post(
   "/xrpc/app.brew-haiku.saveTimer",
   Effect.gen(function* () {
     const auth = yield* getAuth.pipe(
@@ -312,9 +312,9 @@ const saveTimerRoute = HttpRouter.post(
       );
     })
   )
-);
+));
 
-const forgetTimerRoute = HttpRouter.post(
+const forgetTimerRoute = HttpRouter.empty.pipe(HttpRouter.post(
   "/xrpc/app.brew-haiku.forgetTimer",
   Effect.gen(function* () {
     const auth = yield* getAuth.pipe(
@@ -382,11 +382,11 @@ const forgetTimerRoute = HttpRouter.post(
       );
     })
   )
-);
+));
 
 // ─── Read Queries ───────────────────────────────────────────────────────────
 
-const getTimerRoute = HttpRouter.get(
+const getTimerRoute = HttpRouter.empty.pipe(HttpRouter.get(
   "/xrpc/app.brew-haiku.getTimer",
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -438,7 +438,7 @@ const getTimerRoute = HttpRouter.get(
       );
     })
   )
-);
+));
 
 /** Resolve a DID to its PDS URL via ATProtoService */
 const resolvePdsUrl = (
@@ -490,7 +490,7 @@ const listSavedTimersForDid = (
     return { timers: timerViews, cursor };
   });
 
-const listTimersRoute = HttpRouter.get(
+const listTimersRoute = HttpRouter.empty.pipe(HttpRouter.get(
   "/xrpc/app.brew-haiku.listTimers",
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -543,9 +543,9 @@ const listTimersRoute = HttpRouter.get(
       );
     })
   )
-);
+));
 
-const searchTimersRoute = HttpRouter.get(
+const searchTimersRoute = HttpRouter.empty.pipe(HttpRouter.get(
   "/xrpc/app.brew-haiku.searchTimers",
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -609,7 +609,7 @@ const searchTimersRoute = HttpRouter.get(
       );
     })
   )
-);
+));
 
 // ─── Combined Router ────────────────────────────────────────────────────────
 

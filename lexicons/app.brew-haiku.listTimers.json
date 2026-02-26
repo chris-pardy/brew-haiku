@@ -1,0 +1,43 @@
+{
+  "lexicon": 1,
+  "id": "app.brew-haiku.listTimers",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "List timers saved by the authenticated user. Falls back to a curated system list when not logged in.",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["timers"],
+          "properties": {
+            "timers": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "app.brew-haiku.getTimer#timerView"
+              }
+            },
+            "cursor": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

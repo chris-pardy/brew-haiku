@@ -19,6 +19,7 @@ export interface TimerRecord {
   brew_type: string;
   ratio: number | null;
   steps: string;
+  notes: string | null;
   save_count: number;
   created_at: number;
   indexed_at: number;

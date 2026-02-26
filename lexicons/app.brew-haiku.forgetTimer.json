@@ -1,0 +1,27 @@
+{
+  "lexicon": 1,
+  "id": "app.brew-haiku.forgetTimer",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Remove a timer from the authenticated user's saved collection. Deletes the savedTimer record from their repo.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["timerUri"],
+          "properties": {
+            "timerUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the timer to unsave"
+            }
+          }
+        }
+      },
+      "errors": [
+        { "name": "NotSaved", "description": "The user has not saved this timer" }
+      ]
+    }
+  }
+}

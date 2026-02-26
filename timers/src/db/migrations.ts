@@ -87,4 +87,63 @@ export const timersMigrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 2,
+    name: "add_notes_column",
+    up: (db) => {
+      db.run(`ALTER TABLE timer_index ADD COLUMN notes TEXT`);
+    },
+  },
+  {
+    version: 3,
+    name: "expand_fts5_search",
+    up: (db) => {
+      // Drop old triggers and FTS5 table
+      db.run(`DROP TRIGGER IF EXISTS timer_ai`);
+      db.run(`DROP TRIGGER IF EXISTS timer_ad`);
+      db.run(`DROP TRIGGER IF EXISTS timer_au`);
+      db.run(`DROP TABLE IF EXISTS timer_search`);
+
+      // Recreate FTS5 with brew_type, steps, and notes columns
+      db.run(`
+        CREATE VIRTUAL TABLE timer_search USING fts5(
+          uri,
+          name,
+          vessel,
+          brew_type,
+          steps,
+          notes,
+          content=timer_index,
+          content_rowid=rowid
+        )
+      `);
+
+      // Recreate triggers
+      db.run(`
+        CREATE TRIGGER timer_ai AFTER INSERT ON timer_index BEGIN
+          INSERT INTO timer_search(rowid, uri, name, vessel, brew_type, steps, notes)
+          VALUES (NEW.rowid, NEW.uri, NEW.name, NEW.vessel, NEW.brew_type, NEW.steps, NEW.notes);
+        END
+      `);
+
+      db.run(`
+        CREATE TRIGGER timer_ad AFTER DELETE ON timer_index BEGIN
+          INSERT INTO timer_search(timer_search, rowid, uri, name, vessel, brew_type, steps, notes)
+          VALUES ('delete', OLD.rowid, OLD.uri, OLD.name, OLD.vessel, OLD.brew_type, OLD.steps, OLD.notes);
+        END
+      `);
+
+      db.run(`
+        CREATE TRIGGER timer_au AFTER UPDATE ON timer_index BEGIN
+          INSERT INTO timer_search(timer_search, rowid, uri, name, vessel, brew_type, steps, notes)
+          VALUES ('delete', OLD.rowid, OLD.uri, OLD.name, OLD.vessel, OLD.brew_type, OLD.steps, OLD.notes);
+          INSERT INTO timer_search(rowid, uri, name, vessel, brew_type, steps, notes)
+          VALUES (NEW.rowid, NEW.uri, NEW.name, NEW.vessel, NEW.brew_type, NEW.steps, NEW.notes);
+        END
+      `);
+
+      // Rebuild index from existing data
+      db.run(`INSERT INTO timer_search(timer_search) VALUES('rebuild')`);
+    },
+  },
 ];

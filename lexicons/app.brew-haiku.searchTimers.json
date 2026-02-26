@@ -1,0 +1,54 @@
+{
+  "lexicon": 1,
+  "id": "app.brew-haiku.searchTimers",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Full-text search across indexed timers. Results are ranked by relevance and save count.",
+      "parameters": {
+        "type": "params",
+        "required": ["q"],
+        "properties": {
+          "q": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Search query"
+          },
+          "brewType": {
+            "type": "string",
+            "knownValues": ["coffee", "tea"],
+            "description": "Optional filter by brew type"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 25
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["timers"],
+          "properties": {
+            "timers": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "app.brew-haiku.getTimer#timerView"
+              }
+            },
+            "cursor": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -3,6 +3,10 @@ primary_region = "sjc"
 
 [env]
   HOST = "0.0.0.0"
+  # Gateway
+  GATEWAY_PORT = "8080"
+  FEED_INTERNAL_URL = "http://feed.process.brew-haiku.internal:8080"
+  TIMERS_INTERNAL_URL = "http://timers.process.brew-haiku.internal:8083"
   # Feed service
   FEED_PORT = "8080"
   FEED_INGEST_PORT = "8081"
@@ -17,32 +21,20 @@ primary_region = "sjc"
   TIMER_INGEST_URL = "ws://timers.process.brew-haiku.internal:8082"
 
 # ---------------------------------------------------------------------------
-# Process groups — feed, ingest, and timers run on separate machines
+# Process groups — gateway, feed, ingest, and timers run on separate machines
 # ---------------------------------------------------------------------------
 [processes]
+  gateway = "bun run gateway/src/index.ts"
   feed = "bun run feed/src/index.ts"
   ingest = "bun run ingest/src/index.ts"
   timers = "bun run timers/src/index.ts"
 
-# Feed service handles HTTP traffic (feed skeleton, DID document)
+# Gateway is the only process exposed to the internet.
+# It routes to feed and timers via Fly internal DNS.
 [[services]]
   internal_port = 8080
   protocol = "tcp"
-  processes = ["feed"]
-
-  [[services.ports]]
-    handlers = ["http"]
-    port = 80
-
-  [[services.ports]]
-    handlers = ["tls", "http"]
-    port = 443
-
-# Timers service handles HTTP traffic (timer CRUD, auth, search)
-[[services]]
-  internal_port = 8083
-  protocol = "tcp"
-  processes = ["timers"]
+  processes = ["gateway"]
 
   [[services.ports]]
     handlers = ["http"]
@@ -69,6 +61,13 @@ primary_region = "sjc"
   source = "timers_data"
   destination = "/data"
   processes = ["timers"]
+
+# Gateway VM — minimal, just proxies
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+  processes = ["gateway"]
 
 # Feed VM — lightweight, serves reads
 [[vm]]

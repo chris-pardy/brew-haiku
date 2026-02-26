@@ -1,0 +1,41 @@
+{
+  "lexicon": 1,
+  "id": "app.brew-haiku.saveTimer",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Save a timer to the authenticated user's collection. Creates a savedTimer record in their repo.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["timerUri"],
+          "properties": {
+            "timerUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the timer to save"
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["uri"],
+          "properties": {
+            "uri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT URI of the created savedTimer record"
+            }
+          }
+        }
+      },
+      "errors": [
+        { "name": "AlreadySaved", "description": "The user has already saved this timer" }
+      ]
+    }
+  }
+}

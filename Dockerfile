@@ -7,6 +7,7 @@ COPY shared/package.json shared/
 COPY ingest/package.json ingest/
 COPY feed/package.json feed/
 COPY timers/package.json timers/
+COPY gateway/package.json gateway/
 RUN bun install --frozen-lockfile
 
 # Download classifier model (needed by ingest; feed/timers ignore it)
@@ -19,6 +20,8 @@ COPY ingest/src/ ingest/src/
 COPY feed/src/ feed/src/
 COPY feed/feed-config.json feed/
 COPY timers/src/ timers/src/
+COPY timers/search-config.json timers/
+COPY gateway/src/ gateway/src/
 
 # Create volume mount point
 RUN mkdir -p /data

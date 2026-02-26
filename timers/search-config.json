@@ -1,0 +1,12 @@
+{
+  "columnWeights": {
+    "uri": 0.0,
+    "name": 2.0,
+    "vessel": 1.5,
+    "brewType": 1.0,
+    "steps": 1.0,
+    "notes": 0.5
+  },
+  "saveWeight": 1.0,
+  "textWeight": 1.0
+}

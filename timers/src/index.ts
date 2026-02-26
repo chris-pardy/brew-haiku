@@ -7,10 +7,12 @@ import { timerRoutes } from "./routes/timers.js";
 import { savedTimersRoutes } from "./routes/saved-timers.js";
 import { authRoutes } from "./routes/auth.js";
 import { resolveRoutes } from "./routes/resolve.js";
+import { xrpcRoutes } from "./routes/xrpc.js";
 import { TimerServiceLive } from "./services/timer.js";
 import { ATProtoServiceLive } from "./services/atproto.js";
 import { OAuthServiceLive } from "./services/oauth.js";
 import { SavedTimersServiceLive } from "./services/saved-timers.js";
+import { PDSProxyServiceLive } from "./services/pds-proxy.js";
 import { createTimerIngestionServer } from "./services/ingestion-server.js";
 import { timersMigrations } from "./db/migrations.js";
 
@@ -31,7 +33,8 @@ const AppRouter = HttpRouter.empty.pipe(
   HttpRouter.concat(timerRoutes),
   HttpRouter.concat(savedTimersRoutes),
   HttpRouter.concat(authRoutes),
-  HttpRouter.concat(resolveRoutes)
+  HttpRouter.concat(resolveRoutes),
+  HttpRouter.concat(xrpcRoutes)
 );
 
 const app = AppRouter.pipe(HttpServer.serve(HttpMiddleware.logger));
@@ -54,7 +57,8 @@ const AppLayers = Layer.mergeAll(
   TimerLayer,
   ATProtoLayer,
   OAuthLayer,
-  SavedTimersServiceLive
+  SavedTimersServiceLive,
+  PDSProxyServiceLive
 );
 
 const ServerLive = app.pipe(

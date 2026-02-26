@@ -1,4 +1,5 @@
 import { Effect, Context, Layer } from "effect";
+import { resolve } from "path";
 import { DatabaseService, type TimerRecord } from "@brew-haiku/shared";
 
 export class TimerError extends Error {
@@ -30,6 +31,7 @@ export interface Timer {
   brewType: string;
   ratio: number | null;
   steps: TimerStep[];
+  notes: string | null;
   saveCount: number;
   createdAt: Date;
 }
@@ -56,6 +58,51 @@ export interface TimerSearchResult {
   total: number;
 }
 
+export interface SearchColumnWeights {
+  uri: number;
+  name: number;
+  vessel: number;
+  brewType: number;
+  steps: number;
+  notes: number;
+}
+
+export interface SearchConfig {
+  columnWeights: SearchColumnWeights;
+  saveWeight: number;
+  textWeight: number;
+}
+
+const FALLBACK_SEARCH_CONFIG: SearchConfig = {
+  columnWeights: {
+    uri: 0.0,
+    name: 2.0,
+    vessel: 1.5,
+    brewType: 1.0,
+    steps: 1.0,
+    notes: 0.5,
+  },
+  saveWeight: 1.0,
+  textWeight: 1.0,
+};
+
+/** Load search config from JSON file. Falls back to hardcoded defaults if file is missing. */
+export function loadSearchConfig(): SearchConfig {
+  try {
+    const configPath = resolve(import.meta.dir, "../../search-config.json");
+    const fs = require("fs");
+    const json = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    return {
+      columnWeights: { ...FALLBACK_SEARCH_CONFIG.columnWeights, ...json.columnWeights },
+      saveWeight: json.saveWeight ?? FALLBACK_SEARCH_CONFIG.saveWeight,
+      textWeight: json.textWeight ?? FALLBACK_SEARCH_CONFIG.textWeight,
+    };
+  } catch {
+    console.warn("Could not load search-config.json, using defaults");
+    return FALLBACK_SEARCH_CONFIG;
+  }
+}
+
 export class TimerService extends Context.Tag("TimerService")<
   TimerService,
   {
@@ -68,7 +115,11 @@ export class TimerService extends Context.Tag("TimerService")<
     readonly searchTimers: (
       options: TimerSearchOptions
     ) => Effect.Effect<TimerSearchResult, TimerError>;
+    readonly getTimersByUris: (
+      uris: string[]
+    ) => Effect.Effect<Timer[], TimerError>;
     readonly indexTimer: (timer: TimerRecord) => Effect.Effect<void, TimerError>;
+    readonly ensureTimer: (timer: TimerRecord) => Effect.Effect<void, TimerError>;
     readonly deleteTimer: (uri: string) => Effect.Effect<void, TimerError>;
     readonly updateSaveCount: (
       uri: string,
@@ -94,6 +145,7 @@ const recordToTimer = (record: TimerRecord): Timer => {
     brewType: record.brew_type,
     ratio: record.ratio,
     steps,
+    notes: record.notes,
     saveCount: record.save_count,
     createdAt: new Date(record.created_at),
   };
@@ -102,6 +154,9 @@ const recordToTimer = (record: TimerRecord): Timer => {
 export const makeTimerService = Effect.gen(function* () {
   const dbService = yield* DatabaseService;
   const { db } = dbService;
+  const searchConfig = loadSearchConfig();
+  const { columnWeights: cw } = searchConfig;
+  const bm25Args = `${cw.uri}, ${cw.name}, ${cw.vessel}, ${cw.brewType}, ${cw.steps}, ${cw.notes}`;
 
   const getTimer = (
     uri: string
@@ -174,6 +229,23 @@ export const makeTimerService = Effect.gen(function* () {
       catch: (error) => new TimerError("Failed to list timers", error),
     });
 
+  const getTimersByUris = (
+    uris: string[]
+  ): Effect.Effect<Timer[], TimerError> =>
+    Effect.try({
+      try: () => {
+        if (uris.length === 0) return [];
+        const placeholders = uris.map(() => "?").join(", ");
+        const records = db
+          .query<TimerRecord, string[]>(
+            `SELECT * FROM timer_index WHERE uri IN (${placeholders})`
+          )
+          .all(...uris);
+        return records.map(recordToTimer);
+      },
+      catch: (error) => new TimerError("Failed to get timers by URIs", error),
+    });
+
   const indexTimer = (timer: TimerRecord): Effect.Effect<void, TimerError> =>
     Effect.try({
       try: () => {
@@ -198,6 +270,32 @@ export const makeTimerService = Effect.gen(function* () {
         );
       },
       catch: (error) => new TimerError("Failed to index timer", error),
+    });
+
+  const ensureTimer = (timer: TimerRecord): Effect.Effect<void, TimerError> =>
+    Effect.try({
+      try: () => {
+        db.run(
+          `INSERT OR IGNORE INTO timer_index
+           (uri, did, cid, handle, name, vessel, brew_type, ratio, steps, notes, save_count, created_at, indexed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+          [
+            timer.uri,
+            timer.did,
+            timer.cid,
+            timer.handle,
+            timer.name,
+            timer.vessel,
+            timer.brew_type,
+            timer.ratio,
+            timer.steps,
+            timer.notes,
+            timer.created_at,
+            timer.indexed_at,
+          ]
+        );
+      },
+      catch: (error) => new TimerError("Failed to ensure timer", error),
     });
 
   const deleteTimer = (uri: string): Effect.Effect<void, TimerError> =>
@@ -231,8 +329,8 @@ export const makeTimerService = Effect.gen(function* () {
       try: () => {
         const limit = Math.min(Math.max(1, options.limit ?? 20), 100);
         const offset = Math.max(0, options.offset ?? 0);
-        const saveWeight = options.saveWeight ?? 1.0;
-        const textWeight = options.textWeight ?? 1.0;
+        const saveWeight = options.saveWeight ?? searchConfig.saveWeight;
+        const textWeight = options.textWeight ?? searchConfig.textWeight;
 
         // Build WHERE clause for filters
         let filterClause = "WHERE t.save_count > 0";
@@ -263,15 +361,16 @@ export const makeTimerService = Effect.gen(function* () {
           .get(...filterParams, quotedQuery);
         const total = countResult?.count ?? 0;
 
-        // Search with ranking that combines text relevance and save_count
+        // bm25() returns negative values (more negative = better match), so we negate it
+        // Column weights loaded from search-config.json
         const records = db
           .query<TimerRecord & { rank: number }, (string | number)[]>(
-            `SELECT t.*, ts.rank
+            `SELECT t.*, -bm25(timer_search, ${bm25Args}) as rank
              FROM timer_search ts
              JOIN timer_index t ON ts.uri = t.uri
              ${filterClause}
              AND timer_search MATCH ?
-             ORDER BY (t.save_count * ?) + (ts.rank * ?) DESC
+             ORDER BY (t.save_count * ?) + (-bm25(timer_search, ${bm25Args}) * ?) DESC
              LIMIT ? OFFSET ?`
           )
           .all(...filterParams, quotedQuery, saveWeight, textWeight, limit, offset);
@@ -286,9 +385,11 @@ export const makeTimerService = Effect.gen(function* () {
 
   return {
     getTimer,
+    getTimersByUris,
     listTimers,
     searchTimers,
     indexTimer,
+    ensureTimer,
     deleteTimer,
     updateSaveCount,
   };

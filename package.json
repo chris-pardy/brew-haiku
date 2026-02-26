@@ -1,5 +1,5 @@
 {
   "name": "brew-haiku",
   "private": true,
-  "workspaces": ["shared", "ingest", "feed", "timers"]
+  "workspaces": ["shared", "ingest", "feed", "timers", "gateway"]
 }

@@ -1,0 +1,80 @@
+{
+  "lexicon": 1,
+  "id": "app.brew-haiku.getTimer",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get a timer by URI. Proxies the PDS for the record and enriches with save count from the app view database.",
+      "parameters": {
+        "type": "params",
+        "required": ["uri"],
+        "properties": {
+          "uri": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT URI of the timer record"
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "ref",
+          "ref": "#timerView"
+        }
+      }
+    },
+    "timerView": {
+      "type": "object",
+      "description": "Enriched view of a timer record with metadata",
+      "required": ["uri", "cid", "author", "name", "vessel", "brewType", "steps", "saveCount", "createdAt", "indexedAt"],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "format": "at-uri"
+        },
+        "cid": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string",
+          "format": "did"
+        },
+        "name": {
+          "type": "string"
+        },
+        "vessel": {
+          "type": "string"
+        },
+        "brewType": {
+          "type": "string"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "ref",
+            "ref": "app.brew-haiku.timer#step"
+          }
+        },
+        "notes": {
+          "type": "string"
+        },
+        "saveCount": {
+          "type": "integer"
+        },
+        "saved": {
+          "type": "boolean",
+          "description": "Whether the requesting user has saved this timer (only present when authenticated)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime"
+        },
+        "indexedAt": {
+          "type": "string",
+          "format": "datetime"
+        }
+      }
+    }
+  }
+}

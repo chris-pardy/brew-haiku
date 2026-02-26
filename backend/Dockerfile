@@ -17,8 +17,6 @@ COPY feed-config.json ./
 RUN mkdir -p /data
 
 ENV DATABASE_PATH=/data/brew-haiku.db
-ENV PORT=3000
-
-EXPOSE 3000
+EXPOSE 8080
 
 CMD ["bun", "run", "src/index.ts"]

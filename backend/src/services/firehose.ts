@@ -299,7 +299,7 @@ export const makeFirehoseService = Effect.gen(function* () {
       yield* Ref.set(haikuIndexedRef, 0);
       yield* Ref.set(likesProcessedRef, 0);
 
-      // Fork the firehose runner and cleanup loop
+      // Fork as daemon so fiber survives scope closure (e.g. in worker thread)
       const fiber = yield* Effect.all(
         [
           runFirehose(options),
@@ -313,7 +313,7 @@ export const makeFirehoseService = Effect.gen(function* () {
             yield* Ref.set(runningRef, false);
           })
         ),
-        Effect.fork
+        Effect.forkDaemon
       );
 
       yield* Ref.set(fiberRef, fiber);

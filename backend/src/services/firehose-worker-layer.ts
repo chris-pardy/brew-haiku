@@ -86,7 +86,21 @@ export const FirehoseServiceWorker = (worker: Worker) => {
       Effect.tryPromise({
         try: () =>
           new Promise<FirehoseStatus>((resolve) => {
-            statusResolve = resolve;
+            const timeout = setTimeout(() => {
+              statusResolve = null;
+              resolve({
+                running: true,
+                lastCursor: null,
+                eventsProcessed: -1,
+                haikuDetected: -1,
+                haikuIndexed: -1,
+                likesProcessed: -1,
+              });
+            }, 3000);
+            statusResolve = (status) => {
+              clearTimeout(timeout);
+              resolve(status);
+            };
             sendCommand({ type: "status" });
           }),
         catch: () =>
@@ -97,7 +111,21 @@ export const FirehoseServiceWorker = (worker: Worker) => {
       Effect.tryPromise({
         try: async () => {
           const status = await new Promise<FirehoseStatus>((resolve) => {
-            statusResolve = resolve;
+            const timeout = setTimeout(() => {
+              statusResolve = null;
+              resolve({
+                running: true,
+                lastCursor: null,
+                eventsProcessed: -1,
+                haikuDetected: -1,
+                haikuIndexed: -1,
+                likesProcessed: -1,
+              });
+            }, 3000);
+            statusResolve = (status) => {
+              clearTimeout(timeout);
+              resolve(status);
+            };
             sendCommand({ type: "status" });
           });
           return status.lastCursor;

@@ -135,16 +135,15 @@ const createTimerRoute = HttpRouter.empty.pipe(HttpRouter.post(
     );
 
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const body = yield* Effect.tryPromise({
-      try: () => request.json as Promise<{
+    const body = yield* (request.json as Effect.Effect<{
         name: string;
         vessel: string;
         brewType: string;
-        steps: Array<{ action: string; stepType: string; durationSeconds?: number }>;
+        steps: Array<{ action: string; stepType: string; durationSeconds?: number; unit?: string; ratioOfStep?: number; ratio?: number }>;
         notes?: string;
-      }>,
-      catch: () => ({ status: 400 as const, error: "InvalidRequest", message: "Invalid JSON body" }),
-    });
+      }>).pipe(
+      Effect.mapError(() => ({ status: 400 as const, error: "InvalidRequest", message: "Invalid JSON body" }))
+    );
 
     if (!body.name || !body.vessel || !body.brewType || !body.steps) {
       return yield* Effect.fail({
@@ -246,10 +245,9 @@ const saveTimerRoute = HttpRouter.empty.pipe(HttpRouter.post(
     );
 
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const body = yield* Effect.tryPromise({
-      try: () => request.json as Promise<{ timerUri: string }>,
-      catch: () => ({ status: 400 as const, error: "InvalidRequest", message: "Invalid JSON body" }),
-    });
+    const body = yield* (request.json as Effect.Effect<{ timerUri: string }>).pipe(
+      Effect.mapError(() => ({ status: 400 as const, error: "InvalidRequest", message: "Invalid JSON body" }))
+    );
 
     if (!body.timerUri) {
       return yield* Effect.fail({
@@ -327,10 +325,9 @@ const forgetTimerRoute = HttpRouter.empty.pipe(HttpRouter.post(
     );
 
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const body = yield* Effect.tryPromise({
-      try: () => request.json as Promise<{ timerUri: string }>,
-      catch: () => ({ status: 400 as const, error: "InvalidRequest", message: "Invalid JSON body" }),
-    });
+    const body = yield* (request.json as Effect.Effect<{ timerUri: string }>).pipe(
+      Effect.mapError(() => ({ status: 400 as const, error: "InvalidRequest", message: "Invalid JSON body" }))
+    );
 
     if (!body.timerUri) {
       return yield* Effect.fail({

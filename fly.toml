@@ -15,6 +15,7 @@ primary_region = "sjc"
   TIMERS_PORT = "8083"
   TIMERS_INGEST_PORT = "8082"
   TIMERS_DATABASE_PATH = "/data/timers.db"
+  DEFAULT_ACCOUNT_DID = "did:plc:mkeyzlz3mvjqjsmes7zpnowz"
   # Ingest worker
   CURSOR_PATH = "/data/cursor"
   FEED_INGEST_URL = "ws://feed.process.brew-haiku.internal:8081"

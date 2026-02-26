@@ -278,7 +278,7 @@ export const makeTimerService = Effect.gen(function* () {
         db.run(
           `INSERT OR IGNORE INTO timer_index
            (uri, did, cid, handle, name, vessel, brew_type, ratio, steps, notes, save_count, created_at, indexed_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             timer.uri,
             timer.did,
@@ -290,6 +290,7 @@ export const makeTimerService = Effect.gen(function* () {
             timer.ratio,
             timer.steps,
             timer.notes,
+            timer.save_count,
             timer.created_at,
             timer.indexed_at,
           ]

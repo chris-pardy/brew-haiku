@@ -207,7 +207,7 @@ const createTimerRoute = HttpRouter.empty.pipe(HttpRouter.post(
       ratio: null,
       steps: JSON.stringify(body.steps),
       notes: body.notes || null,
-      save_count: 0,
+      save_count: 1,
       created_at: Date.now(),
       indexed_at: Date.now(),
     };

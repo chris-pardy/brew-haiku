@@ -77,9 +77,9 @@ primary_region = "sjc"
   cpus = 1
   processes = ["feed"]
 
-# Ingest VM — needs more resources for ML classification
+# Ingest VM — word-list scoring, lightweight
 [[vm]]
-  memory = "1024mb"
+  memory = "256mb"
   cpu_kind = "shared"
   cpus = 1
   processes = ["ingest"]

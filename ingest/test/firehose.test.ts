@@ -78,7 +78,7 @@ function makeTestIngestClients(db: Database): {
             event.hasSignature ? 1 : 0, likeCount,
             event.createdAt, Date.now(),
             event.scores.coffee, event.scores.tea,
-            event.scores.morning, 0, event.scores.evening,
+            event.scores.morning, event.scores.afternoon, event.scores.evening,
             event.scores.nature, event.scores.relaxation,
           ]
         );
@@ -645,7 +645,7 @@ describe("Stream Filters", () => {
     }
   });
 
-  test("filterHaikuPosts does not pass through delete events", async () => {
+  test("filterHaikuPosts passes through delete events for downstream handling", async () => {
     const events: JetstreamEvent[] = [
       {
         did: "did:plc:1",
@@ -677,11 +677,16 @@ describe("Stream Filters", () => {
       filterHaikuPosts(stream).pipe(Stream.runCollect)
     );
 
-    expect(Chunk.size(filtered)).toBe(1);
+    expect(Chunk.size(filtered)).toBe(2);
     const first = Chunk.get(filtered, 0);
     expect(first._tag).toBe("Some");
     if (first._tag === "Some") {
-      expect((first.value as JetstreamCommitEvent).commit.operation).toBe("create");
+      expect((first.value as JetstreamCommitEvent).commit.operation).toBe("delete");
+    }
+    const second = Chunk.get(filtered, 1);
+    expect(second._tag).toBe("Some");
+    if (second._tag === "Some") {
+      expect((second.value as JetstreamCommitEvent).commit.operation).toBe("create");
     }
   });
 

@@ -26,7 +26,7 @@ export function makeIngestClient(ws: WebSocket): IngestClientShape {
 // full (the cursor will replay them on a future restart if needed).
 // ---------------------------------------------------------------------------
 
-const DEFAULT_MAX_BUFFER = 10_000;
+const DEFAULT_MAX_BUFFER = 500;
 
 export class BufferedIngestClient {
   private buffer: IngestEvent[] = [];

@@ -57,7 +57,7 @@ export function createIngestionServer(
             event.scores.coffee,
             event.scores.tea,
             event.scores.morning,
-            0, // afternoon — not yet classified
+            event.scores.afternoon,
             event.scores.evening,
             event.scores.nature,
             event.scores.relaxation,

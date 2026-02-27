@@ -12,7 +12,6 @@
     "@brew-haiku/shared": "workspace:*",
     "@effect/platform": "^0.94.1",
     "@effect/platform-bun": "^0.87.0",
-    "@huggingface/transformers": "^3.8.1",
     "effect": "^3.19.14"
   },
   "devDependencies": {

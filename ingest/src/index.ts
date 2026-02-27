@@ -4,7 +4,7 @@
  * classified events to the appropriate server.
  *
  * Each downstream connection uses a BufferedIngestClient: when a server is
- * unavailable events are held in an in-memory ring buffer (default 10 000
+ * unavailable events are held in an in-memory ring buffer (default 500
  * events) and flushed as soon as the connection is (re)established.
  *
  * Environment variables:

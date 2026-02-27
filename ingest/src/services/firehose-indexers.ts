@@ -1,4 +1,4 @@
-import { Effect, Stream, Ref, Duration } from "effect";
+import { Effect, Stream, Ref } from "effect";
 import type { TimerRecord } from "@brew-haiku/shared";
 import {
   type JetstreamEvent,
@@ -200,13 +200,11 @@ export const createHaikuIndexer = Effect.gen(function* () {
             nature: 0,
             relaxation: 0,
             morning: 0,
+            afternoon: 0,
             evening: 0,
           } as CategoryScores);
         })
       );
-      // Yield CPU after inference on shared-cpu machines
-      yield* Effect.sleep(Duration.millis(200));
-
       yield* client.send({
         type: "haiku:create",
         uri,

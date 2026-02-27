@@ -29,6 +29,7 @@ export type IngestEvent =
         nature: number;
         relaxation: number;
         morning: number;
+        afternoon: number;
         evening: number;
       };
       createdAt: number;

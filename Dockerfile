@@ -10,10 +10,6 @@ COPY timers/package.json timers/
 COPY gateway/package.json gateway/
 RUN bun install --frozen-lockfile
 
-# Download classifier model (needed by ingest; feed/timers ignore it)
-COPY ingest/scripts/download-model.ts ingest/scripts/
-RUN bun run ingest/scripts/download-model.ts
-
 # Copy application source
 COPY shared/src/ shared/src/
 COPY ingest/src/ ingest/src/

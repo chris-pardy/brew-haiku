@@ -1,360 +1,205 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
+import 'package:url_launcher/url_launcher.dart';
+import '../models/auth_session.dart';
+import '../services/api_service.dart' show ApiService;
 import '../services/auth_service.dart';
+import '../services/bluesky_service.dart';
+import '../services/cache_service.dart';
 
-/// Authentication status
-enum AuthStatus {
-  /// Initial state, checking stored session
-  initializing,
+enum AuthStatus { unknown, unauthenticated, authenticated }
 
-  /// No valid session found
-  unauthenticated,
-
-  /// OAuth flow in progress
-  authenticating,
-
-  /// User is authenticated with valid session
-  authenticated,
-
-  /// Authentication or refresh failed
-  error,
-}
-
-/// User session data for the app
-class AuthSession {
-  final String did;
-  final String handle;
-  final String accessToken;
-  final String refreshToken;
-  final DateTime expiresAt;
-  final String? pdsUrl;
-
-  const AuthSession({
-    required this.did,
-    required this.handle,
-    required this.accessToken,
-    required this.refreshToken,
-    required this.expiresAt,
-    this.pdsUrl,
-  });
-
-  bool get isExpired => DateTime.now().isAfter(expiresAt);
-
-  bool get needsRefresh {
-    final refreshThreshold = expiresAt.subtract(const Duration(minutes: 5));
-    return DateTime.now().isAfter(refreshThreshold);
-  }
-
-  AuthSession copyWith({
-    String? did,
-    String? handle,
-    String? accessToken,
-    String? refreshToken,
-    DateTime? expiresAt,
-    String? pdsUrl,
-  }) {
-    return AuthSession(
-      did: did ?? this.did,
-      handle: handle ?? this.handle,
-      accessToken: accessToken ?? this.accessToken,
-      refreshToken: refreshToken ?? this.refreshToken,
-      expiresAt: expiresAt ?? this.expiresAt,
-      pdsUrl: pdsUrl ?? this.pdsUrl,
-    );
-  }
-
-  /// Create from StoredSession
-  factory AuthSession.fromStored(StoredSession stored) {
-    return AuthSession(
-      did: stored.did,
-      handle: stored.handle,
-      accessToken: stored.accessToken,
-      refreshToken: stored.refreshToken,
-      expiresAt: stored.expiresAt,
-      pdsUrl: stored.pdsUrl,
-    );
-  }
-
-  /// Convert to StoredSession
-  StoredSession toStored() {
-    return StoredSession(
-      did: did,
-      handle: handle,
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-      expiresAt: expiresAt,
-      pdsUrl: pdsUrl,
-    );
-  }
-}
-
-/// Authentication state
 class AuthState {
   final AuthStatus status;
   final AuthSession? session;
-  final String? errorMessage;
+  final String? lastHandle;
+  final String? error;
+  final bool signingIn;
 
   const AuthState({
-    this.status = AuthStatus.initializing,
+    this.status = AuthStatus.unknown,
     this.session,
-    this.errorMessage,
+    this.lastHandle,
+    this.error,
+    this.signingIn = false,
   });
 
-  bool get isAuthenticated =>
-      status == AuthStatus.authenticated && session != null;
-
-  bool get isInitializing => status == AuthStatus.initializing;
+  bool get isAuthenticated => status == AuthStatus.authenticated && session != null;
+  String? get pdsUrl => null; // Resolved on demand
 
   AuthState copyWith({
     AuthStatus? status,
     AuthSession? session,
-    String? errorMessage,
-    bool clearSession = false,
-    bool clearError = false,
+    String? lastHandle,
+    String? error,
+    bool? signingIn,
   }) {
     return AuthState(
       status: status ?? this.status,
-      session: clearSession ? null : (session ?? this.session),
-      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      session: session ?? this.session,
+      lastHandle: lastHandle ?? this.lastHandle,
+      error: error,
+      signingIn: signingIn ?? this.signingIn,
     );
   }
 }
 
-/// Auth state notifier that manages authentication lifecycle
 class AuthNotifier extends StateNotifier<AuthState> {
   final AuthService _authService;
-  Timer? _refreshTimer;
+  final ApiService _apiService;
+  final BlueskyService _blueskyService;
 
-  AuthNotifier(this._authService) : super(const AuthState()) {
-    _initializeSession();
+  AuthNotifier({
+    required AuthService authService,
+    required ApiService apiService,
+    required BlueskyService blueskyService,
+  })  : _authService = authService,
+        _apiService = apiService,
+        _blueskyService = blueskyService,
+        super(const AuthState()) {
+    _init();
   }
 
-  /// Initialize by loading stored session
-  Future<void> _initializeSession() async {
-    try {
-      final storedSession = await _authService.loadSession();
+  Future<void> _init() async {
+    final session = await _authService.loadSession();
+    final lastHandle = await _authService.getLastHandle();
 
-      if (storedSession == null) {
-        state = state.copyWith(
-          status: AuthStatus.unauthenticated,
-          clearSession: true,
-        );
-        return;
-      }
-
-      // Check if token needs refresh
-      if (storedSession.needsRefresh) {
-        await _refreshSession(AuthSession.fromStored(storedSession));
-      } else {
-        state = state.copyWith(
-          status: AuthStatus.authenticated,
-          session: AuthSession.fromStored(storedSession),
-          clearError: true,
-        );
-        _scheduleTokenRefresh();
-      }
-    } catch (e) {
-      state = state.copyWith(
+    if (session != null && !session.isExpired) {
+      _apiService.updateSession(session);
+      state = AuthState(
+        status: AuthStatus.authenticated,
+        session: session,
+        lastHandle: lastHandle,
+      );
+    } else {
+      state = AuthState(
         status: AuthStatus.unauthenticated,
-        clearSession: true,
-        errorMessage: 'Failed to load session',
+        lastHandle: lastHandle,
       );
     }
   }
 
-  /// Start OAuth flow for the given handle
   Future<void> signIn(String handle) async {
-    state = state.copyWith(
-      status: AuthStatus.authenticating,
-      clearError: true,
-    );
+    // Normalize handle: strip @, add default domain
+    var normalized = handle.trim();
+    if (normalized.startsWith('@')) {
+      normalized = normalized.substring(1);
+    }
+    if (!normalized.contains('.')) {
+      normalized = '$normalized.bsky.social';
+    }
 
+    state = state.copyWith(signingIn: true, error: null);
     try {
-      await _authService.launchOAuthFlow(handle);
-      // The flow continues when handleOAuthCallback is called
-      // For now, we stay in authenticating state
-    } catch (e) {
-      state = state.copyWith(
-        status: AuthStatus.unauthenticated,
-        errorMessage: e is AuthException ? e.message : 'Sign in failed',
-      );
-    }
-  }
-
-  /// Handle the OAuth callback with authorization code
-  Future<void> handleOAuthCallback({
-    required String code,
-    String? state,
-    String? iss,
-  }) async {
-    this.state = this.state.copyWith(
-      status: AuthStatus.authenticating,
-      clearError: true,
-    );
-
-    try {
-      final storedSession = await _authService.handleCallback(
-        code: code,
-        state: state,
-        iss: iss,
-      );
-
-      this.state = this.state.copyWith(
-        status: AuthStatus.authenticated,
-        session: AuthSession.fromStored(storedSession),
-        clearError: true,
-      );
-
-      _scheduleTokenRefresh();
-    } catch (e) {
-      this.state = this.state.copyWith(
-        status: AuthStatus.error,
-        errorMessage: e is AuthException ? e.message : 'Authentication failed',
-      );
-    }
-  }
-
-  /// Sign out and clear session
-  Future<void> signOut() async {
-    _cancelRefreshTimer();
-
-    try {
-      await _authService.clearSession();
-    } catch (e) {
-      // Ignore storage errors on sign out
-    }
-
-    state = const AuthState(status: AuthStatus.unauthenticated);
-  }
-
-  /// Manually refresh the session
-  Future<void> refreshSession() async {
-    final currentSession = state.session;
-    if (currentSession == null) {
-      state = state.copyWith(
-        status: AuthStatus.unauthenticated,
-        clearSession: true,
-      );
-      return;
-    }
-
-    await _refreshSession(currentSession);
-  }
-
-  Future<void> _refreshSession(AuthSession currentSession) async {
-    try {
-      final newStoredSession = await _authService.refreshSession(
-        currentSession.toStored(),
-      );
-
-      state = state.copyWith(
-        status: AuthStatus.authenticated,
-        session: AuthSession.fromStored(newStoredSession),
-        clearError: true,
-      );
-
-      _scheduleTokenRefresh();
-    } catch (e) {
-      // If refresh fails, sign out
-      state = state.copyWith(
-        status: AuthStatus.unauthenticated,
-        clearSession: true,
-        errorMessage: e is AuthException ? e.message : 'Session expired',
-      );
-    }
-  }
-
-  /// Schedule automatic token refresh before expiry
-  void _scheduleTokenRefresh() {
-    _cancelRefreshTimer();
-
-    final session = state.session;
-    if (session == null) return;
-
-    // Refresh 5 minutes before expiry
-    final refreshTime = session.expiresAt.subtract(const Duration(minutes: 5));
-    final delay = refreshTime.difference(DateTime.now());
-
-    if (delay.isNegative) {
-      // Already past refresh time, refresh now
-      _refreshSession(session);
-      return;
-    }
-
-    _refreshTimer = Timer(delay, () {
-      final currentSession = state.session;
-      if (currentSession != null) {
-        _refreshSession(currentSession);
+      // Gateway handles PAR + PKCE + redirect flow
+      final url = _authService.getLoginUrl(normalized);
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
-    });
-  }
-
-  void _cancelRefreshTimer() {
-    _refreshTimer?.cancel();
-    _refreshTimer = null;
-  }
-
-  /// Clear any error state
-  void clearError() {
-    if (state.errorMessage != null) {
-      state = state.copyWith(clearError: true);
+    } catch (e) {
+      state = state.copyWith(
+        signingIn: false,
+        error: 'Something went awry. Try again in a moment.',
+      );
     }
   }
 
-  @override
-  void dispose() {
-    _cancelRefreshTimer();
-    super.dispose();
+  /// Handle the deep link callback from the gateway OAuth flow.
+  /// The gateway sends session params directly (did, handle, accessToken, etc.)
+  /// or an error param.
+  Future<void> handleCallback(Map<String, String> params) async {
+    state = state.copyWith(signingIn: true, error: null);
+
+    final error = params['error'];
+    if (error != null) {
+      state = state.copyWith(
+        signingIn: false,
+        status: AuthStatus.unauthenticated,
+        error: error,
+      );
+      return;
+    }
+
+    try {
+      final session = AuthSession(
+        did: params['did']!,
+        handle: params['handle']!,
+        accessToken: params['accessToken']!,
+        refreshToken: params['refreshToken']!,
+        expiresAt: int.parse(params['expiresAt']!),
+      );
+      await _authService.saveSession(session);
+      _apiService.updateSession(session);
+      state = AuthState(
+        status: AuthStatus.authenticated,
+        session: session,
+        lastHandle: session.handle,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        signingIn: false,
+        status: AuthStatus.unauthenticated,
+        error: 'Something went awry. Try again in a moment.',
+      );
+    }
+  }
+
+  Future<AuthSession?> refreshSession() async {
+    if (state.session == null) return null;
+    try {
+      final refreshed = await _authService.refreshTokens(state.session!);
+      _apiService.updateSession(refreshed);
+      state = state.copyWith(session: refreshed);
+      return refreshed;
+    } catch (_) {
+      await signOut();
+      return null;
+    }
+  }
+
+  Future<void> signOut() async {
+    await _authService.clearSession();
+    _apiService.updateSession(null);
+    state = AuthState(
+      status: AuthStatus.unauthenticated,
+      lastHandle: state.lastHandle,
+    );
+  }
+
+  /// Resolve the PDS URL for the current session's DID.
+  Future<String> getPdsUrl() async {
+    if (state.session == null) throw Exception('Not authenticated');
+    return _blueskyService.getPdsUrl(state.session!.did);
   }
 }
 
-/// Provider for the AuthService
+// Service providers
+final cacheServiceProvider = Provider<CacheService>((ref) => CacheService());
+
+final apiServiceProvider = Provider<ApiService>((ref) {
+  return ApiService();
+});
+
 final authServiceProvider = Provider<AuthService>((ref) {
-  final service = AuthService(
-    apiBaseUrl: const String.fromEnvironment(
-      'API_BASE_URL',
-      defaultValue: 'https://api.brew-haiku.app',
-    ),
-    clientId: const String.fromEnvironment(
-      'OAUTH_CLIENT_ID',
-      defaultValue: 'https://brew-haiku.app/client-metadata.json',
-    ),
-    redirectUri: const String.fromEnvironment(
-      'OAUTH_REDIRECT_URI',
-      defaultValue: 'brew-haiku://oauth/callback',
-    ),
+  return AuthService(api: ref.read(apiServiceProvider));
+});
+
+final blueskyServiceProvider = Provider<BlueskyService>((ref) {
+  return BlueskyService();
+});
+
+final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
+  final authService = ref.read(authServiceProvider);
+  final apiService = ref.read(apiServiceProvider);
+  final blueskyService = ref.read(blueskyServiceProvider);
+  final notifier = AuthNotifier(
+    authService: authService,
+    apiService: apiService,
+    blueskyService: blueskyService,
   );
 
-  ref.onDispose(() => service.dispose());
+  // Wire up token refresh callback
+  apiService.onRefreshNeeded = notifier.refreshSession;
 
-  return service;
-});
-
-/// Provider for authentication state
-final authStateProvider =
-    StateNotifierProvider<AuthNotifier, AuthState>((ref) {
-  final authService = ref.watch(authServiceProvider);
-  return AuthNotifier(authService);
-});
-
-/// Provider for checking if user is authenticated
-final isAuthenticatedProvider = Provider<bool>((ref) {
-  return ref.watch(authStateProvider).isAuthenticated;
-});
-
-/// Provider for the current user's handle
-final currentHandleProvider = Provider<String?>((ref) {
-  return ref.watch(authStateProvider).session?.handle;
-});
-
-/// Provider for the current user's DID
-final currentDidProvider = Provider<String?>((ref) {
-  return ref.watch(authStateProvider).session?.did;
-});
-
-/// Provider for the current access token
-final accessTokenProvider = Provider<String?>((ref) {
-  return ref.watch(authStateProvider).session?.accessToken;
+  return notifier;
 });

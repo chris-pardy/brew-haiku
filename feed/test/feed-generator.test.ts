@@ -163,6 +163,7 @@ describe("FeedGeneratorService with Database", () => {
         recencyWeight: 0.5,
         recencyHalfLifeHours: 12,
         signatureBonus: 50.0,
+        friendLikeWeight: 25.0,
         coffeeWeight: 15.0,
         teaWeight: 15.0,
         natureWeight: 10.0,

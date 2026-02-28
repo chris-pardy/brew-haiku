@@ -14,6 +14,7 @@ export interface FeedConfig {
   recencyWeight: number;
   recencyHalfLifeHours: number;
   signatureBonus: number;
+  friendLikeWeight: number;
   coffeeWeight: number;
   teaWeight: number;
   natureWeight: number;
@@ -49,6 +50,7 @@ export function loadFeedConfigFile(): FeedConfigFile {
       recencyWeight: 100.0,
       recencyHalfLifeHours: 6,
       signatureBonus: 50.0,
+      friendLikeWeight: 25.0,
       natureWeight: 10.0,
       relaxationWeight: 5.0,
       coffeeWeight: 15.0,
@@ -129,7 +131,8 @@ export class FeedGeneratorService extends Context.Tag("FeedGeneratorService")<
       limit: number,
       cursor?: string,
       type?: FeedType,
-      time?: FeedTime
+      time?: FeedTime,
+      viewerFollows?: Set<string>
     ) => Effect.Effect<FeedSkeleton, FeedGeneratorError>;
     readonly configFile: FeedConfigFile;
   }
@@ -148,7 +151,8 @@ export const makeFeedGeneratorService = (
       limit: number,
       cursor?: string,
       type?: FeedType,
-      time?: FeedTime
+      time?: FeedTime,
+      viewerFollows?: Set<string>
     ): Effect.Effect<FeedSkeleton, FeedGeneratorError> =>
       Effect.try({
         try: () => {
@@ -164,14 +168,35 @@ export const makeFeedGeneratorService = (
           }
 
           const now = Date.now();
-          const rows = db
-            .query<{ uri: string }, [number, number]>(
-              `SELECT uri, ${scoreSql(config, String(now))} AS score
+          const followDids = viewerFollows ? [...viewerFollows] : [];
+          const hasFriends = followDids.length > 0 && config.friendLikeWeight > 0;
+
+          const friendJoin = hasFriends
+            ? `LEFT JOIN (
+                SELECT post_uri, COUNT(*) as friend_likes
+                FROM haiku_likes
+                WHERE liker_did IN (${followDids.map(() => "?").join(", ")})
+                GROUP BY post_uri
+              ) fl ON haiku_posts.uri = fl.post_uri`
+            : "";
+
+          const friendScoreTerm = hasFriends
+            ? ` + ${config.friendLikeWeight} * COALESCE(fl.friend_likes, 0)`
+            : "";
+
+          const sql = `SELECT haiku_posts.uri, ${scoreSql(config, String(now))}${friendScoreTerm} AS score
                FROM haiku_posts
+               ${friendJoin}
                ORDER BY score DESC
-               LIMIT ? OFFSET ?`
-            )
-            .all(effectiveLimit + 1, offset);
+               LIMIT ? OFFSET ?`;
+
+          const params = hasFriends
+            ? [...followDids, effectiveLimit + 1, offset]
+            : [effectiveLimit + 1, offset];
+
+          const rows = db
+            .query<{ uri: string }, any[]>(sql)
+            .all(...params);
 
           const hasMore = rows.length > effectiveLimit;
           const feed: FeedPost[] = rows.slice(0, effectiveLimit).map((row) => ({

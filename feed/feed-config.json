@@ -4,6 +4,7 @@
     "recencyWeight": 100.0,
     "recencyHalfLifeHours": 6,
     "signatureBonus": 50.0,
+    "friendLikeWeight": 25.0,
     "natureWeight": 10.0,
     "relaxationWeight": 5.0,
     "coffeeWeight": 15.0,

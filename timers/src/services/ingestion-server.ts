@@ -45,6 +45,15 @@ export function createTimerIngestionServer(
             ]
           );
         }
+
+        // Track individual save in timer_saves
+        if (event.saverDid) {
+          db.run(
+            `INSERT OR IGNORE INTO timer_saves (saver_did, timer_uri, created_at)
+             VALUES (?, ?, ?)`,
+            [event.saverDid, event.uri, Date.now()]
+          );
+        }
         break;
       }
 
@@ -66,6 +75,37 @@ export function createTimerIngestionServer(
             [result.uri]
           );
         }
+
+        // Remove individual save from timer_saves
+        if (event.saverDid && result) {
+          db.run(
+            "DELETE FROM timer_saves WHERE saver_did = ? AND timer_uri = ?",
+            [event.saverDid, result.uri]
+          );
+        }
+        break;
+      }
+
+      case "brew:create": {
+        db.run(
+          `INSERT OR IGNORE INTO brew_index
+           (uri, did, timer_uri, post_uri, step_values, created_at, indexed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            event.uri,
+            event.did,
+            event.timerUri,
+            event.postUri,
+            event.stepValues,
+            event.createdAt,
+            Date.now(),
+          ]
+        );
+        break;
+      }
+
+      case "brew:delete": {
+        db.run("DELETE FROM brew_index WHERE uri = ?", [event.uri]);
         break;
       }
 

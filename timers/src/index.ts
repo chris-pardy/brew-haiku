@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect";
 import { HttpRouter, HttpServer, HttpServerResponse, HttpMiddleware } from "@effect/platform";
 import { BunHttpServer, BunRuntime } from "@effect/platform-bun";
-import { DatabaseServiceLive, DatabaseService } from "@brew-haiku/shared";
+import { DatabaseServiceLive, DatabaseService, FollowsResolverServiceLive } from "@brew-haiku/shared";
 import { healthRoutes } from "./routes/health.js";
 import { timerRoutes } from "./routes/timers.js";
 import { savedTimersRoutes } from "./routes/saved-timers.js";
@@ -13,6 +13,8 @@ import { ATProtoServiceLive } from "./services/atproto.js";
 import { OAuthServiceLive } from "./services/oauth.js";
 import { SavedTimersServiceLive } from "./services/saved-timers.js";
 import { PDSProxyServiceLive } from "./services/pds-proxy.js";
+import { BrewServiceLive } from "./services/brew.js";
+import { ActivityServiceLive } from "./services/activity.js";
 import { createTimerIngestionServer } from "./services/ingestion-server.js";
 import { timersMigrations } from "./db/migrations.js";
 
@@ -51,6 +53,12 @@ const ATProtoLayer = ATProtoServiceLive.pipe(Layer.provide(DbLayer));
 // OAuth service depends on ATProto
 const OAuthLayer = OAuthServiceLive.pipe(Layer.provide(ATProtoLayer));
 
+// Brew service depends on Database
+const BrewLayer = BrewServiceLive.pipe(Layer.provide(DbLayer));
+
+// Activity service depends on Database
+const ActivityLayer = ActivityServiceLive.pipe(Layer.provide(DbLayer));
+
 // Combined layers
 const AppLayers = Layer.mergeAll(
   DbLayer,
@@ -58,7 +66,10 @@ const AppLayers = Layer.mergeAll(
   ATProtoLayer,
   OAuthLayer,
   SavedTimersServiceLive,
-  PDSProxyServiceLive
+  PDSProxyServiceLive,
+  BrewLayer,
+  ActivityLayer,
+  FollowsResolverServiceLive
 );
 
 const ServerLive = app.pipe(

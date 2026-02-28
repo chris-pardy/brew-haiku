@@ -146,4 +146,37 @@ export const timersMigrations: Migration[] = [
       db.run(`INSERT INTO timer_search(timer_search) VALUES('rebuild')`);
     },
   },
+  {
+    version: 4,
+    name: "add_timer_saves_and_brew_index",
+    up: (db) => {
+      // Timer saves — tracks which user saved which timer
+      db.run(`
+        CREATE TABLE IF NOT EXISTS timer_saves (
+          saver_did TEXT NOT NULL,
+          timer_uri TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          PRIMARY KEY (saver_did, timer_uri)
+        )
+      `);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_timer_saves_timer ON timer_saves(timer_uri)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_timer_saves_saver ON timer_saves(saver_did)`);
+
+      // Brew index — records brew sessions
+      db.run(`
+        CREATE TABLE IF NOT EXISTS brew_index (
+          uri TEXT PRIMARY KEY,
+          did TEXT NOT NULL,
+          timer_uri TEXT NOT NULL,
+          post_uri TEXT,
+          step_values TEXT,
+          created_at INTEGER NOT NULL,
+          indexed_at INTEGER NOT NULL
+        )
+      `);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_brew_did ON brew_index(did)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_brew_timer ON brew_index(timer_uri)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_brew_created ON brew_index(created_at)`);
+    },
+  },
 ];

@@ -8,6 +8,11 @@
       "parameters": {
         "type": "params",
         "properties": {
+          "did": {
+            "type": "string",
+            "format": "did",
+            "description": "DID of the user whose saved timers to list. If omitted, lists the authenticated user's timers."
+          },
           "limit": {
             "type": "integer",
             "minimum": 1,

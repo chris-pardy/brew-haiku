@@ -6,6 +6,7 @@ import { healthRoutes } from "./routes/health.js";
 import { didDocumentRoutes } from "./routes/did-document.js";
 import { feedRoutes } from "./routes/feed.js";
 import { FeedGeneratorServiceLive, loadFeedConfigFile, scoreSql } from "./services/feed-generator.js";
+import { FollowsResolverServiceLive } from "@brew-haiku/shared";
 import { createIngestionServer } from "./services/ingestion-server.js";
 import { setIngestionServer, getIngestionServer } from "./services/ingestion-state.js";
 import { feedMigrations } from "./db/migrations.js";
@@ -51,7 +52,7 @@ const DbLayer = DatabaseServiceLive(process.env.FEED_DATABASE_PATH || process.en
 // Feed generator depends on Database
 const FeedGeneratorLayer = FeedGeneratorServiceLive().pipe(Layer.provide(DbLayer));
 
-const AppLayers = Layer.mergeAll(DbLayer, FeedGeneratorLayer);
+const AppLayers = Layer.mergeAll(DbLayer, FeedGeneratorLayer, FollowsResolverServiceLive);
 
 const ServerLive = app.pipe(
   Layer.provide(BunHttpServer.layer({ port: PORT, hostname: HOST })),

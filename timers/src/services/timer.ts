@@ -51,6 +51,7 @@ export interface TimerSearchOptions {
   vessel?: string;
   saveWeight?: number;
   textWeight?: number;
+  viewerFollows?: Set<string>;
 }
 
 export interface TimerSearchResult {
@@ -71,6 +72,7 @@ export interface SearchConfig {
   columnWeights: SearchColumnWeights;
   saveWeight: number;
   textWeight: number;
+  friendSaveWeight: number;
 }
 
 const FALLBACK_SEARCH_CONFIG: SearchConfig = {
@@ -84,6 +86,7 @@ const FALLBACK_SEARCH_CONFIG: SearchConfig = {
   },
   saveWeight: 1.0,
   textWeight: 1.0,
+  friendSaveWeight: 5.0,
 };
 
 /** Load search config from JSON file. Falls back to hardcoded defaults if file is missing. */
@@ -96,6 +99,7 @@ export function loadSearchConfig(): SearchConfig {
       columnWeights: { ...FALLBACK_SEARCH_CONFIG.columnWeights, ...json.columnWeights },
       saveWeight: json.saveWeight ?? FALLBACK_SEARCH_CONFIG.saveWeight,
       textWeight: json.textWeight ?? FALLBACK_SEARCH_CONFIG.textWeight,
+      friendSaveWeight: json.friendSaveWeight ?? FALLBACK_SEARCH_CONFIG.friendSaveWeight,
     };
   } catch {
     console.warn("Could not load search-config.json, using defaults");
@@ -118,12 +122,25 @@ export class TimerService extends Context.Tag("TimerService")<
     readonly getTimersByUris: (
       uris: string[]
     ) => Effect.Effect<Timer[], TimerError>;
+    readonly getTimersByDid: (
+      did: string,
+      limit: number,
+      offset: number
+    ) => Effect.Effect<{ timers: Timer[]; total: number }, TimerError>;
     readonly indexTimer: (timer: TimerRecord) => Effect.Effect<void, TimerError>;
     readonly ensureTimer: (timer: TimerRecord) => Effect.Effect<void, TimerError>;
     readonly deleteTimer: (uri: string) => Effect.Effect<void, TimerError>;
     readonly updateSaveCount: (
       uri: string,
       delta: number
+    ) => Effect.Effect<void, TimerError>;
+    readonly recordSave: (
+      saverDid: string,
+      timerUri: string
+    ) => Effect.Effect<void, TimerError>;
+    readonly removeSave: (
+      saverDid: string,
+      timerUri: string
     ) => Effect.Effect<void, TimerError>;
   }
 >() {}
@@ -332,6 +349,7 @@ export const makeTimerService = Effect.gen(function* () {
         const offset = Math.max(0, options.offset ?? 0);
         const saveWeight = options.saveWeight ?? searchConfig.saveWeight;
         const textWeight = options.textWeight ?? searchConfig.textWeight;
+        const friendSaveWeight = searchConfig.friendSaveWeight;
 
         // Build WHERE clause for filters
         let filterClause = "WHERE t.save_count > 0";
@@ -362,19 +380,40 @@ export const makeTimerService = Effect.gen(function* () {
           .get(...filterParams, quotedQuery);
         const total = countResult?.count ?? 0;
 
+        // Build friend boost join + scoring
+        const follows = options.viewerFollows;
+        let friendJoin = "";
+        let friendScore = "0";
+        const queryParams: (string | number)[] = [...filterParams, quotedQuery];
+
+        if (follows && follows.size > 0) {
+          const followArray = Array.from(follows);
+          const placeholders = followArray.map(() => "?").join(", ");
+          friendJoin = `LEFT JOIN (
+            SELECT timer_uri, COUNT(*) as friend_saves
+            FROM timer_saves
+            WHERE saver_did IN (${placeholders})
+            GROUP BY timer_uri
+          ) fs ON fs.timer_uri = t.uri`;
+          friendScore = `COALESCE(fs.friend_saves, 0) * ?`;
+          // Insert follow DIDs before the rest of the query params
+          queryParams.splice(filterParams.length, 0, ...followArray);
+          queryParams.push(friendSaveWeight);
+        }
+
         // bm25() returns negative values (more negative = better match), so we negate it
-        // Column weights loaded from search-config.json
         const records = db
           .query<TimerRecord & { rank: number }, (string | number)[]>(
             `SELECT t.*, -bm25(timer_search, ${bm25Args}) as rank
              FROM timer_search ts
              JOIN timer_index t ON ts.uri = t.uri
+             ${friendJoin}
              ${filterClause}
              AND timer_search MATCH ?
-             ORDER BY (t.save_count * ?) + (-bm25(timer_search, ${bm25Args}) * ?) DESC
+             ORDER BY (t.save_count * ?) + (-bm25(timer_search, ${bm25Args}) * ?) + ${friendScore} DESC
              LIMIT ? OFFSET ?`
           )
-          .all(...filterParams, quotedQuery, saveWeight, textWeight, limit, offset);
+          .all(...queryParams, saveWeight, textWeight, limit, offset);
 
         return {
           timers: records.map(recordToTimer),
@@ -384,15 +423,83 @@ export const makeTimerService = Effect.gen(function* () {
       catch: (error) => new TimerError("Failed to search timers", error),
     });
 
+  const getTimersByDid = (
+    did: string,
+    limit: number,
+    offset: number
+  ): Effect.Effect<{ timers: Timer[]; total: number }, TimerError> =>
+    Effect.try({
+      try: () => {
+        const safeLimit = Math.min(Math.max(1, limit), 100);
+        const safeOffset = Math.max(0, offset);
+
+        const countResult = db
+          .query<{ count: number }, [string]>(
+            `SELECT COUNT(DISTINCT t.uri) as count
+             FROM timer_saves ts
+             JOIN timer_index t ON ts.timer_uri = t.uri
+             WHERE ts.saver_did = ?`
+          )
+          .get(did);
+        const total = countResult?.count ?? 0;
+
+        const records = db
+          .query<TimerRecord, [string, number, number]>(
+            `SELECT t.*
+             FROM timer_saves ts
+             JOIN timer_index t ON ts.timer_uri = t.uri
+             WHERE ts.saver_did = ?
+             ORDER BY ts.created_at DESC
+             LIMIT ? OFFSET ?`
+          )
+          .all(did, safeLimit, safeOffset);
+
+        return { timers: records.map(recordToTimer), total };
+      },
+      catch: (error) => new TimerError("Failed to get timers by DID", error),
+    });
+
+  const recordSave = (
+    saverDid: string,
+    timerUri: string
+  ): Effect.Effect<void, TimerError> =>
+    Effect.try({
+      try: () => {
+        db.run(
+          `INSERT OR IGNORE INTO timer_saves (saver_did, timer_uri, created_at)
+           VALUES (?, ?, ?)`,
+          [saverDid, timerUri, Date.now()]
+        );
+      },
+      catch: (error) => new TimerError("Failed to record save", error),
+    });
+
+  const removeSave = (
+    saverDid: string,
+    timerUri: string
+  ): Effect.Effect<void, TimerError> =>
+    Effect.try({
+      try: () => {
+        db.run(
+          "DELETE FROM timer_saves WHERE saver_did = ? AND timer_uri = ?",
+          [saverDid, timerUri]
+        );
+      },
+      catch: (error) => new TimerError("Failed to remove save", error),
+    });
+
   return {
     getTimer,
     getTimersByUris,
+    getTimersByDid,
     listTimers,
     searchTimers,
     indexTimer,
     ensureTimer,
     deleteTimer,
     updateSaveCount,
+    recordSave,
+    removeSave,
   };
 });
 

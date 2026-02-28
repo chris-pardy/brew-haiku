@@ -21,6 +21,7 @@ export class IndexerError extends Error {
 const HAIKU_SIGNATURE = "via @brew-haiku.app";
 const SAVED_TIMER_COLLECTION = "app.brew-haiku.savedTimer";
 const TIMER_COLLECTION = "app.brew-haiku.timer";
+const BREW_COLLECTION = "app.brew-haiku.brew";
 const POST_COLLECTION = "app.bsky.feed.post";
 const LIKE_COLLECTION = "app.bsky.feed.like";
 
@@ -294,6 +295,7 @@ export const createTimerIndexer = Effect.gen(function* () {
         brewType: timer.brew_type,
         ratio: timer.ratio,
         steps: timer.steps,
+        saverDid: event.did,
         createdAt: timer.created_at,
       });
     });
@@ -306,6 +308,7 @@ export const createTimerIndexer = Effect.gen(function* () {
         type: "timer:unsave",
         rkey: event.commit.rkey,
         did: event.did,
+        saverDid: event.did,
       });
     });
 
@@ -319,6 +322,76 @@ export const createTimerIndexer = Effect.gen(function* () {
 
   return { processEvent };
 });
+
+// ---------------------------------------------------------------------------
+// Brew indexer — forward brew events to timers server
+// ---------------------------------------------------------------------------
+
+export const filterBrewEvents = <E, R>(
+  stream: Stream.Stream<JetstreamEvent, E, R>
+): Stream.Stream<JetstreamCommitEvent, E, R> =>
+  stream.pipe(filterByCollection(BREW_COLLECTION));
+
+export const createBrewIndexer = Effect.gen(function* () {
+  const client = yield* TimerIngestClient;
+
+  const processEvent = (
+    event: JetstreamCommitEvent
+  ): Effect.Effect<void, IndexerError> =>
+    Effect.gen(function* () {
+      const { did, commit } = event;
+      const uri = `at://${did}/${commit.collection}/${commit.rkey}`;
+
+      if (commit.operation === "create") {
+        const record = commit.record;
+        if (!record) return;
+
+        const timerUri = record.timer as string | undefined;
+        if (!timerUri) return;
+
+        const postUri = (record.post as string | undefined) ?? null;
+        const stepValues = record.stepValues
+          ? JSON.stringify(record.stepValues)
+          : null;
+        const createdAt =
+          typeof record.createdAt === "string"
+            ? new Date(record.createdAt).getTime()
+            : Date.now();
+
+        yield* client.send({
+          type: "brew:create",
+          uri,
+          did,
+          timerUri,
+          postUri,
+          stepValues,
+          createdAt,
+        });
+      } else if (commit.operation === "delete") {
+        yield* client.send({ type: "brew:delete", uri });
+      }
+    });
+
+  return { processEvent };
+});
+
+export const runBrewIndexer = <E>(
+  eventStream: Stream.Stream<JetstreamEvent, E>
+): Effect.Effect<void, E | IndexerError, TimerIngestClient> =>
+  Effect.gen(function* () {
+    const indexer = yield* createBrewIndexer;
+
+    yield* filterBrewEvents(eventStream).pipe(
+      Stream.mapEffect((event) =>
+        indexer.processEvent(event).pipe(
+          Effect.catchAll((error) =>
+            Effect.logError(`Brew indexer error: ${error.message}`)
+          )
+        )
+      ),
+      Stream.runDrain
+    );
+  });
 
 // ---------------------------------------------------------------------------
 // Cursor persister — saves cursor to a local file
@@ -395,6 +468,7 @@ export {
   HAIKU_SIGNATURE,
   SAVED_TIMER_COLLECTION,
   TIMER_COLLECTION,
+  BREW_COLLECTION,
   POST_COLLECTION,
   LIKE_COLLECTION,
 };

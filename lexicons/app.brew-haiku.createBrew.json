@@ -1,0 +1,52 @@
+{
+  "lexicon": 1,
+  "id": "app.brew-haiku.createBrew",
+  "defs": {
+    "main": {
+      "type": "procedure",
+      "description": "Record a brew session. Creates a brew record in the user's PDS and indexes it locally.",
+      "input": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["timerUri"],
+          "properties": {
+            "timerUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT-URI of the timer that was brewed"
+            },
+            "postUri": {
+              "type": "string",
+              "format": "at-uri",
+              "description": "AT-URI of a Bluesky post associated with this brew"
+            },
+            "stepValues": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "app.brew-haiku.brew#stepValue"
+              }
+            }
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["uri", "cid"],
+          "properties": {
+            "uri": {
+              "type": "string",
+              "format": "at-uri"
+            },
+            "cid": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

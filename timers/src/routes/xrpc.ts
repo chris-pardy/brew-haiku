@@ -4,10 +4,13 @@ import { TimerService, TimerError, TimerNotFoundError } from "../services/timer.
 import { PDSProxyService, PDSProxyError, RecordAlreadyExistsError, RecordNotFoundError } from "../services/pds-proxy.js";
 import { ATProtoService } from "../services/atproto.js";
 import { getAuth, getOptionalAuth, AuthError, type AuthInfo } from "../services/auth-middleware.js";
-import type { TimerRecord } from "@brew-haiku/shared";
+import { FollowsResolverService, type TimerRecord } from "@brew-haiku/shared";
+import { BrewService } from "../services/brew.js";
+import { ActivityService } from "../services/activity.js";
 
 const TIMER_COLLECTION = "app.brew-haiku.timer";
 const SAVED_TIMER_COLLECTION = "app.brew-haiku.savedTimer";
+const BREW_COLLECTION = "app.brew-haiku.brew";
 const DEFAULT_ACCOUNT_DID = process.env.DEFAULT_ACCOUNT_DID;
 
 /** Generate a TID (timestamp-based ID) for ATProto rkeys */
@@ -215,6 +218,11 @@ const createTimerRoute = HttpRouter.empty.pipe(HttpRouter.post(
       Effect.catchTag("TimerError", () => Effect.void) // non-fatal
     );
 
+    // Write-through: record save in timer_saves
+    yield* timerService.recordSave(auth.did, uri).pipe(
+      Effect.catchTag("TimerError", () => Effect.void)
+    );
+
     return yield* HttpServerResponse.json({ uri, cid });
   }).pipe(
     Effect.catchAll((e) => {
@@ -295,6 +303,11 @@ const saveTimerRoute = HttpRouter.empty.pipe(HttpRouter.post(
       Effect.catchTag("TimerError", () => Effect.void)
     );
 
+    // Write-through: record save in timer_saves
+    yield* timerService.recordSave(auth.did, body.timerUri).pipe(
+      Effect.catchTag("TimerError", () => Effect.void)
+    );
+
     return yield* HttpServerResponse.json({ uri });
   }).pipe(
     Effect.catchAll((e) => {
@@ -361,6 +374,11 @@ const forgetTimerRoute = HttpRouter.empty.pipe(HttpRouter.post(
 
     // Update local save count
     yield* timerService.updateSaveCount(body.timerUri, -1).pipe(
+      Effect.catchTag("TimerError", () => Effect.void)
+    );
+
+    // Write-through: remove save from timer_saves
+    yield* timerService.removeSave(auth.did, body.timerUri).pipe(
       Effect.catchTag("TimerError", () => Effect.void)
     );
 
@@ -495,8 +513,23 @@ const listTimersRoute = HttpRouter.empty.pipe(HttpRouter.get(
 
     const limitParam = url.searchParams.get("limit");
     const cursorParam = url.searchParams.get("cursor");
+    const didParam = url.searchParams.get("did");
     const limit = Math.min(Math.max(1, limitParam ? parseInt(limitParam, 10) : 50), 100);
     const offset = decodeCursor(cursorParam);
+
+    // If a specific DID is provided, list their saved timers from local index
+    if (didParam) {
+      const timerService = yield* TimerService;
+      const result = yield* timerService.getTimersByDid(didParam, limit, offset).pipe(
+        Effect.catchTag("TimerError", (e) =>
+          Effect.fail({ status: 500 as const, error: "InternalError", message: e.message })
+        )
+      );
+      const timerViews = result.timers.map((t) => toTimerView(t, "", new Date()));
+      const nextOffset = offset + limit;
+      const cursor = nextOffset < result.total ? encodeCursor(nextOffset) : undefined;
+      return yield* HttpServerResponse.json({ timers: timerViews, cursor });
+    }
 
     const auth = yield* getOptionalAuth;
 
@@ -562,16 +595,24 @@ const searchTimersRoute = HttpRouter.empty.pipe(HttpRouter.get(
     const limit = Math.min(Math.max(1, limitParam ? parseInt(limitParam, 10) : 25), 100);
     const offset = decodeCursor(cursorParam);
 
+    // Resolve viewer follows for friend-save boosting
+    const auth = yield* getOptionalAuth;
+    let viewerFollows: Set<string> | undefined;
+    if (auth) {
+      const followsResolver = yield* FollowsResolverService;
+      viewerFollows = yield* followsResolver.getFollowDids(auth.did).pipe(
+        Effect.catchTag("FollowsResolverError", () => Effect.succeed(undefined as Set<string> | undefined))
+      );
+    }
+
     const timerService = yield* TimerService;
     const result = yield* timerService
-      .searchTimers({ query: query.trim(), limit, offset, brewType })
+      .searchTimers({ query: query.trim(), limit, offset, brewType, viewerFollows })
       .pipe(
         Effect.catchTag("TimerError", (e) =>
           Effect.fail({ status: 500 as const, error: "InternalError", message: e.message })
         )
       );
-
-    const auth = yield* getOptionalAuth;
 
     let savedRkeys: Set<string> | null = null;
     if (auth) {
@@ -608,6 +649,223 @@ const searchTimersRoute = HttpRouter.empty.pipe(HttpRouter.get(
   )
 ));
 
+// ─── Brew Routes ────────────────────────────────────────────────────────────
+
+const createBrewRoute = HttpRouter.empty.pipe(HttpRouter.post(
+  "/xrpc/app.brew-haiku.createBrew",
+  Effect.gen(function* () {
+    const auth = yield* getAuth.pipe(
+      Effect.catchTag("AuthError", (e) =>
+        Effect.fail({ status: 401 as const, error: "AuthRequired", message: e.message })
+      ),
+      Effect.catchTag("ATProtoError", (e) =>
+        Effect.fail({ status: 401 as const, error: "AuthRequired", message: e.message })
+      )
+    );
+
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const body = yield* (request.json as Effect.Effect<{
+        timerUri: string;
+        postUri?: string;
+        stepValues?: Array<{ stepIndex: number; value: number }>;
+      }>).pipe(
+      Effect.mapError(() => ({ status: 400 as const, error: "InvalidRequest", message: "Invalid JSON body" }))
+    );
+
+    if (!body.timerUri) {
+      return yield* Effect.fail({
+        status: 400 as const,
+        error: "InvalidRequest",
+        message: "Missing required field: timerUri",
+      });
+    }
+
+    const pdsProxy = yield* PDSProxyService;
+    const brewService = yield* BrewService;
+
+    const rkey = generateTid();
+    const now = new Date().toISOString();
+
+    // Build brew record for PDS
+    const brewRecord: Record<string, unknown> = {
+      $type: BREW_COLLECTION,
+      timer: body.timerUri,
+      createdAt: now,
+    };
+    if (body.postUri) brewRecord.post = body.postUri;
+    if (body.stepValues) brewRecord.stepValues = body.stepValues;
+
+    // Create brew record on user's PDS
+    const { uri, cid } = yield* pdsProxy.createRecord(auth, BREW_COLLECTION, brewRecord, rkey).pipe(
+      Effect.catchTag("RecordAlreadyExistsError", () =>
+        Effect.fail({ status: 409 as const, error: "Conflict", message: "Brew record already exists" })
+      ),
+      Effect.catchTag("PDSProxyError", (e) =>
+        Effect.fail({ status: 502 as const, error: "PDSError", message: e.message })
+      )
+    );
+
+    // Write-through: index brew locally
+    yield* brewService.indexBrew({
+      uri,
+      did: auth.did,
+      timer_uri: body.timerUri,
+      post_uri: body.postUri ?? null,
+      step_values: body.stepValues ? JSON.stringify(body.stepValues) : null,
+      created_at: Date.now(),
+      indexed_at: Date.now(),
+    }).pipe(
+      Effect.catchTag("BrewError", () => Effect.void)
+    );
+
+    return yield* HttpServerResponse.json({ uri, cid });
+  }).pipe(
+    Effect.catchAll((e) => {
+      if ("status" in e && "error" in e) {
+        return HttpServerResponse.json(
+          { error: e.error, message: e.message },
+          { status: e.status }
+        );
+      }
+      return HttpServerResponse.json(
+        { error: "InternalError", message: "Unexpected error" },
+        { status: 500 }
+      );
+    })
+  )
+));
+
+const listBrewsRoute = HttpRouter.empty.pipe(HttpRouter.get(
+  "/xrpc/app.brew-haiku.listBrews",
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const url = new URL(request.url, "http://localhost");
+
+    const limitParam = url.searchParams.get("limit");
+    const cursorParam = url.searchParams.get("cursor");
+    const didParam = url.searchParams.get("did");
+    const limit = Math.min(Math.max(1, limitParam ? parseInt(limitParam, 10) : 50), 100);
+    const offset = decodeCursor(cursorParam);
+
+    let targetDid: string;
+    if (didParam) {
+      targetDid = didParam;
+    } else {
+      const auth = yield* getAuth.pipe(
+        Effect.catchTag("AuthError", (e) =>
+          Effect.fail({ status: 401 as const, error: "AuthRequired", message: e.message })
+        ),
+        Effect.catchTag("ATProtoError", (e) =>
+          Effect.fail({ status: 401 as const, error: "AuthRequired", message: e.message })
+        )
+      );
+      targetDid = auth.did;
+    }
+
+    const brewService = yield* BrewService;
+    const result = yield* brewService.listBrews(targetDid, limit, offset).pipe(
+      Effect.catchTag("BrewError", (e) =>
+        Effect.fail({ status: 500 as const, error: "InternalError", message: e.message })
+      )
+    );
+
+    const brewViews = result.brews.map((b) => ({
+      uri: b.uri,
+      did: b.did,
+      timerUri: b.timerUri,
+      postUri: b.postUri ?? undefined,
+      stepValues: b.stepValues ?? undefined,
+      createdAt: b.createdAt.toISOString(),
+    }));
+
+    const nextOffset = offset + limit;
+    const cursor = nextOffset < result.total ? encodeCursor(nextOffset) : undefined;
+
+    return yield* HttpServerResponse.json({ brews: brewViews, cursor });
+  }).pipe(
+    Effect.catchAll((e) => {
+      if ("status" in e && "error" in e) {
+        return HttpServerResponse.json(
+          { error: e.error, message: e.message },
+          { status: e.status }
+        );
+      }
+      return HttpServerResponse.json(
+        { error: "InternalError", message: "Unexpected error" },
+        { status: 500 }
+      );
+    })
+  )
+));
+
+// ─── Activity Feed ──────────────────────────────────────────────────────────
+
+const getActivityRoute = HttpRouter.empty.pipe(HttpRouter.get(
+  "/xrpc/app.brew-haiku.getActivity",
+  Effect.gen(function* () {
+    const auth = yield* getAuth.pipe(
+      Effect.catchTag("AuthError", (e) =>
+        Effect.fail({ status: 401 as const, error: "AuthRequired", message: e.message })
+      ),
+      Effect.catchTag("ATProtoError", (e) =>
+        Effect.fail({ status: 401 as const, error: "AuthRequired", message: e.message })
+      )
+    );
+
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const url = new URL(request.url, "http://localhost");
+
+    const limitParam = url.searchParams.get("limit");
+    const cursorParam = url.searchParams.get("cursor");
+    const limit = Math.min(Math.max(1, limitParam ? parseInt(limitParam, 10) : 50), 100);
+    const offset = decodeCursor(cursorParam);
+
+    // Resolve follows
+    const followsResolver = yield* FollowsResolverService;
+    const followDids = yield* followsResolver.getFollowDids(auth.did).pipe(
+      Effect.catchTag("FollowsResolverError", () => Effect.succeed(new Set<string>()))
+    );
+
+    // Include the user's own DID
+    const allDids = new Set(followDids);
+    allDids.add(auth.did);
+
+    const activityService = yield* ActivityService;
+    const result = yield* activityService.getActivity(allDids, limit, offset).pipe(
+      Effect.catchTag("ActivityError", (e) =>
+        Effect.fail({ status: 500 as const, error: "InternalError", message: e.message })
+      )
+    );
+
+    const events = result.events.map((e) => ({
+      eventType: e.eventType,
+      did: e.did,
+      uri: e.uri,
+      timerUri: e.timerUri,
+      postUri: e.postUri ?? undefined,
+      createdAt: e.createdAt.toISOString(),
+    }));
+
+    const nextOffset = offset + limit;
+    const cursor = nextOffset < result.total ? encodeCursor(nextOffset) : undefined;
+
+    return yield* HttpServerResponse.json({ events, cursor });
+  }).pipe(
+    Effect.catchAll((e) => {
+      if ("status" in e && "error" in e) {
+        return HttpServerResponse.json(
+          { error: e.error, message: e.message },
+          { status: e.status }
+        );
+      }
+      return HttpServerResponse.json(
+        { error: "InternalError", message: "Unexpected error" },
+        { status: 500 }
+      );
+    })
+  )
+));
+
 // ─── Combined Router ────────────────────────────────────────────────────────
 
 export const xrpcRoutes = HttpRouter.empty.pipe(
@@ -616,5 +874,8 @@ export const xrpcRoutes = HttpRouter.empty.pipe(
   HttpRouter.concat(forgetTimerRoute),
   HttpRouter.concat(getTimerRoute),
   HttpRouter.concat(listTimersRoute),
-  HttpRouter.concat(searchTimersRoute)
+  HttpRouter.concat(searchTimersRoute),
+  HttpRouter.concat(createBrewRoute),
+  HttpRouter.concat(listBrewsRoute),
+  HttpRouter.concat(getActivityRoute)
 );

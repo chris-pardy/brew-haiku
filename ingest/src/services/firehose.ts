@@ -7,9 +7,15 @@ import {
 import {
   createHaikuIndexer,
   createLikeIndexer,
+  createTimerIndexer,
+  createBrewIndexer,
   filterLikeEvents,
+  filterSavedTimerEvents,
+  filterBrewEvents,
   POST_COLLECTION,
   LIKE_COLLECTION,
+  SAVED_TIMER_COLLECTION,
+  BREW_COLLECTION,
 } from "./firehose-indexers.js";
 import { detectHaiku } from "./haiku-detector.js";
 import { FeedIngestClient, TimerIngestClient } from "./ingestion-client.js";
@@ -62,6 +68,8 @@ export const runFirehosePipeline = (
       wantedCollections: options.wantedCollections ?? [
         POST_COLLECTION,
         LIKE_COLLECTION,
+        SAVED_TIMER_COLLECTION,
+        BREW_COLLECTION,
       ],
     };
 
@@ -70,6 +78,8 @@ export const runFirehosePipeline = (
     // Create indexers
     const haikuIndexer = yield* createHaikuIndexer;
     const likeIndexer = yield* createLikeIndexer;
+    const timerIndexer = yield* createTimerIndexer;
+    const brewIndexer = yield* createBrewIndexer;
 
     // Create the event stream
     const eventStream = jetstreamService.createEventStream(effectiveOptions);
@@ -99,9 +109,9 @@ export const runFirehosePipeline = (
           )
         );
 
-        // Fan out to 2 consumers: posts (haiku + deletes), likes
-        const [postStream, likeStream] = yield* trackedStream.pipe(
-          Stream.broadcast(2, 100)
+        // Fan out to 4 consumers: posts, likes, timers, brews
+        const [postStream, likeStream, timerStream, brewStream] = yield* trackedStream.pipe(
+          Stream.broadcast(4, 100)
         );
 
         // Cursor persister loop — save to file every 30s
@@ -162,6 +172,34 @@ export const runFirehosePipeline = (
               Stream.runDrain
             ),
 
+            // Timer indexer (saved timer events)
+            filterSavedTimerEvents(timerStream).pipe(
+              Stream.mapEffect((event) =>
+                timerIndexer.processEvent(event).pipe(
+                  Effect.catchAll((error) =>
+                    Effect.logError(
+                      `Timer indexer error: ${error.message}`
+                    )
+                  )
+                )
+              ),
+              Stream.runDrain
+            ),
+
+            // Brew indexer
+            filterBrewEvents(brewStream).pipe(
+              Stream.mapEffect((event) =>
+                brewIndexer.processEvent(event).pipe(
+                  Effect.catchAll((error) =>
+                    Effect.logError(
+                      `Brew indexer error: ${error.message}`
+                    )
+                  )
+                )
+              ),
+              Stream.runDrain
+            ),
+
             // Cursor persister
             cursorLoop,
           ],
@@ -173,4 +211,4 @@ export const runFirehosePipeline = (
     return { getStatus };
   });
 
-export { POST_COLLECTION, LIKE_COLLECTION };
+export { POST_COLLECTION, LIKE_COLLECTION, SAVED_TIMER_COLLECTION, BREW_COLLECTION };

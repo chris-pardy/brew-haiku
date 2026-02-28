@@ -54,9 +54,20 @@ export type IngestEvent =
       brewType: string;
       ratio: number | null;
       steps: string;
+      saverDid: string;
       createdAt: number;
     }
-  | { type: "timer:unsave"; rkey: string; did: string }
+  | { type: "timer:unsave"; rkey: string; did: string; saverDid: string }
+  | {
+      type: "brew:create";
+      uri: string;
+      did: string;
+      timerUri: string;
+      postUri: string | null;
+      stepValues: string | null;
+      createdAt: number;
+    }
+  | { type: "brew:delete"; uri: string }
   | {
       type: "stats";
       shardId: string;

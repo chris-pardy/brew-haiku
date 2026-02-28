@@ -16,6 +16,14 @@ export { runMigrations, type Migration } from "./db/migrations.js";
 // Protocol
 export { type IngestEvent, type ServerMessage } from "./protocol.js";
 
+// Follows Resolver
+export {
+  FollowsResolverService,
+  FollowsResolverServiceLive,
+  FollowsResolverError,
+  makeFollowsResolverService,
+} from "./services/follows-resolver.js";
+
 // Jetstream
 export {
   JetstreamService,

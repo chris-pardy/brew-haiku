@@ -1,0 +1,56 @@
+{
+  "lexicon": 1,
+  "id": "app.brew-haiku.brew",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A recorded brew session — created when a user runs a timer",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["timer", "createdAt"],
+        "properties": {
+          "timer": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of the timer that was brewed"
+          },
+          "post": {
+            "type": "string",
+            "format": "at-uri",
+            "description": "AT-URI of a Bluesky post associated with this brew"
+          },
+          "stepValues": {
+            "type": "array",
+            "items": {
+              "type": "ref",
+              "ref": "#stepValue"
+            },
+            "description": "Actual quantities entered during the brew"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Timestamp when the brew session started"
+          }
+        }
+      }
+    },
+    "stepValue": {
+      "type": "object",
+      "description": "A captured value from a quantity step during a brew",
+      "required": ["stepIndex", "value"],
+      "properties": {
+        "stepIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Zero-based index of the step in the timer"
+        },
+        "value": {
+          "type": "number",
+          "description": "The quantity entered by the user"
+        }
+      }
+    }
+  }
+}

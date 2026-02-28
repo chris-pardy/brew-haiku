@@ -1,0 +1,77 @@
+{
+  "lexicon": 1,
+  "id": "app.brew-haiku.getActivity",
+  "defs": {
+    "main": {
+      "type": "query",
+      "description": "Get an activity feed of brews, timer saves, and timer creates from you and your follows.",
+      "parameters": {
+        "type": "params",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50
+          },
+          "cursor": {
+            "type": "string"
+          }
+        }
+      },
+      "output": {
+        "encoding": "application/json",
+        "schema": {
+          "type": "object",
+          "required": ["events"],
+          "properties": {
+            "events": {
+              "type": "array",
+              "items": {
+                "type": "ref",
+                "ref": "#activityEvent"
+              }
+            },
+            "cursor": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "activityEvent": {
+      "type": "object",
+      "required": ["eventType", "did", "createdAt"],
+      "properties": {
+        "eventType": {
+          "type": "string",
+          "knownValues": ["brew", "save", "create"],
+          "description": "Discriminator for the activity event type"
+        },
+        "did": {
+          "type": "string",
+          "format": "did"
+        },
+        "uri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "URI of the brew, savedTimer, or timer record"
+        },
+        "timerUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "URI of the associated timer"
+        },
+        "postUri": {
+          "type": "string",
+          "format": "at-uri",
+          "description": "URI of associated post (for brews)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "datetime"
+        }
+      }
+    }
+  }
+}

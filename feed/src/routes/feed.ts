@@ -1,6 +1,8 @@
 import { Effect } from "effect";
 import { HttpRouter, HttpServerResponse, HttpServerRequest } from "@effect/platform";
 import { FeedGeneratorService, type FeedType, type FeedTime } from "../services/feed-generator.js";
+import { getViewerDid } from "../services/viewer-auth.js";
+import { FollowsResolverService } from "@brew-haiku/shared";
 import { SERVICE_DID, DOMAIN } from "./did-document.js";
 
 const PUBLISHER_DID = process.env.PUBLISHER_DID || "";
@@ -59,8 +61,18 @@ export const feedRoutes = HttpRouter.empty.pipe(
         ? (timeParam as FeedTime)
         : undefined;
 
+      // Resolve viewer follows for friend-like boosting
+      const viewerDid = yield* getViewerDid;
+      let viewerFollows: Set<string> | undefined;
+      if (viewerDid) {
+        const followsResolver = yield* FollowsResolverService;
+        viewerFollows = yield* followsResolver.getFollowDids(viewerDid).pipe(
+          Effect.catchTag("FollowsResolverError", () => Effect.succeed(undefined as Set<string> | undefined))
+        );
+      }
+
       const feedGenerator = yield* FeedGeneratorService;
-      const result = yield* feedGenerator.getFeedSkeleton(limit, cursor, type, time).pipe(
+      const result = yield* feedGenerator.getFeedSkeleton(limit, cursor, type, time, viewerFollows).pipe(
         Effect.catchTag("FeedGeneratorError", (e) =>
           Effect.succeed({
             error: "InternalError",
